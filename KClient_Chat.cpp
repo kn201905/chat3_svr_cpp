@@ -128,7 +128,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(uint16_t* p
 
 // -------------------------------------------------------------
 
-void  KClient_Chat::SetPayload_RRQ(uint16_t rereq_jsc, uint16_t sec_wait)
+void  KClient_Chat::Set_AsioWrtBuf_with_PLHdr_to_RRQ(uint16_t rereq_jsc, uint16_t sec_wait)
 {
 	this->Reset_prvt_buf_write();  // 念の為
 
@@ -148,7 +148,7 @@ void  KClient_Chat::SetPayload_RRQ(uint16_t rereq_jsc, uint16_t sec_wait)
 
 KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 {
-	static_assert(sizeof(KUInfo) == 30, "KUInfo");
+//	static_assert(sizeof(KUInfo) == 30, "KUInfo");
 
 	// ----------------------------------
 	// まず、この KClient が InitRI の情報を得る資格を持っているかどうかのチェック
@@ -176,17 +176,40 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 
 	// ----------------------------------
 	// Large バッファの準備をする
-	KLargeBuf::KInfo* const  pbufInfo = KLargeBuf::ReqBuf_Single();
-	if (pbufInfo == NULL)
+	const KLargeBuf::KInfo* const  cpbufInfo = KLargeBuf::ReqBuf_Single();
+	if (cpbufInfo == NULL)
 	{
 		// バッファの準備に失敗した場合は、JSクライアントに再送要求を出すように指示をする
 		m_rrq_time_InitRI = m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
-		this->SetPayload_RRQ(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC, N_JSC::EN_SEC_Wait_Init_RI);
+
+		this->Set_AsioWrtBuf_with_PLHdr_to_RRQ(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC
+												, N_JSC::EN_SEC_Wait_Init_RI);
 		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
 	}
 
 	// Large バッファに返信内容を書き込んでいく
 	// 特別な資格がないクライアントに対しては、最大バイト数は EN_BYTES_BUF とする。
+	uint8_t* const  pdata_payload = cpbufInfo->GetBuf() + 4;
+	uint16_t*  pbuf_large = (uint16_t*)pdata_payload;
+	const uint16_t* const  pbuf_tmnt_large = (uint16_t*)cpbufInfo->GetBuf_tmnt();
+	// まずは、cmd ID を書き込んでおく
+	*pbuf_large++ = N_JSC::EN_DN_Init_RI;
+
+	// まず、多重接続が検出された場合の警告があれば、先に書き込んでおく
+	if (m_pKClnt->m_precd_SPRS->m_times_cnct != 1)
+	{
+		const KRecd_SPRS* const  cprecd_SPRS = m_pKClnt->m_precd_SPRS;
+		*pbuf_large++ = N_JSC::EN_DN_Init_RI__WARN_multi_cnct;
+		*pbuf_large++ = cprecd_SPRS->m_times_cnct;
+		*pbuf_large++ = uint16_t(m_time_WS_Read_Hndlr - cprecd_SPRS->m_time_1st_cnct);
+		*pbuf_large++ = cprecd_SPRS->m_pass_phrs;
+	}
+
+
+
+	*pbuf_large++ = 0;
+	*pbuf_large++ = 0;
+	this->Prep_AsioWrtBuf_with_PayloadHdr(pdata_payload, ((uint8_t*)pbuf_large) - ((uint8_t*)pdata_payload));
 
 
 

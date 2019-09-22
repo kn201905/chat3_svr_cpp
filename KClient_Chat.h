@@ -30,6 +30,8 @@ namespace  N_JSC
 	enum : uint16_t {
 		EN_CMD_MASK = 0xff,
 		EN_BUSY_WAIT_SEC = 0x100,  // wait sec 付きの返信であったことを表す
+
+		EN_DN_Init_RI__WARN_multi_cnct = 0xffff,
 	};
 }
 
@@ -54,8 +56,8 @@ public:
 		uint8_t*  m_pbuf_tmnt = NULL;
 
 	public:
-		uint8_t*  GetBuf() { return  m_pbuf; }
-		uint8_t*  GetBuf_tmnt() { return  m_pbuf_tmnt; }
+		uint8_t*  GetBuf() const { return  m_pbuf; }
+		uint8_t*  GetBuf_tmnt() const { return  m_pbuf_tmnt; }
 	};
 
 	// バッファが確保できなかった場合、NULL が返される
@@ -140,32 +142,38 @@ private:
 	// WS_Write の場合は、こちらの都合で send するため、クライアントが遅延リクエストを送ることはない
 	time_t  m_time_WS_Read_Hndlr;
 
+	// 遅延リクエストを指示した場合、ここに記録される（遅延の必要がない場合は 0 に設定される）
+	time_t  m_rrq_time_InitRI = 0;
+
+	// --------------------------------------------
 	//【注意】pdata_payload の前 4 bytes に書き込みが行われることに要注意
 	// 1) pdata_payload - 2 or pdata_payload - 4 のところにヘッダを書き込む
 	// 2) size は 64 kB まで
-	inline void  Write_PayloadHdr(uint8_t* pdata_payload, size_t size);
+	inline void  Prep_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size_payload);
 	// 何らかのエラーで、規定秒数後に、再送信の設定を行う
 	// リクエスト＋エラーと、規定秒数をペイロードで送る(ペイロードは 4 bytes)
 	// 送信にはプライベートバッファが利用されることに注意。念の為に、Reset_prvt_buf_write() はコールされる
-	void  SetPayload_RRQ(uint16_t rereq_jsc, uint16_t sec_wait);
-
-	// --------------------------------------------
-	// 遅延リクエストを指示した場合、ここに記録される（遅延の必要がない場合は 0 に設定される）
-	time_t  m_rrq_time_InitRI = 0;
+	void  Set_AsioWrtBuf_with_PLHdr_to_RRQ(uint16_t rereq_jsc, uint16_t sec_wait);
 };
 
 // -------------------------------------------------------------
 
-inline void  KClient_Chat::Write_PayloadHdr(uint8_t* pdata_payload, size_t size)
+// size は、ペイロードデータ部分のバイト数を表す
+inline void  KClient_Chat::Prep_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size)
 {
 	if (size <= 125)
 	{
 		// 0x82: FIN(0x80) | バイナリフレーム(0x2)
-		*(uint16_t*)(pdata_payload - 2) = uint16_t(0x82 | (size << 8));
+		uint8_t*  pbuf_top = pdata_payload - 2;
+		*(uint16_t*)pbuf_top = uint16_t(0x82 | (size << 8));
+		m_pKClnt->m_asio_prvt_buf_write.data_ = pbuf_top;
+		m_pKClnt->m_asio_prvt_buf_write.size_ = size + 2;
 	}
 	else
 	{
-		*(uint32_t*)(pdata_payload - 4) = uint32_t(0x82 | (126 << 8) | 
-											((size & 0xff00) << 16) | ((size & 0xff) << 24));
-	}	
+		uint8_t*  pbuf_top = pdata_payload - 4;
+		*(uint32_t*)pbuf_top = uint32_t(0x82 | (126 << 8) | ((size & 0xff00) << 16) | ((size & 0xff) << 24));
+		m_pKClnt->m_asio_prvt_buf_write.data_ = pbuf_top;
+		m_pKClnt->m_asio_prvt_buf_write.size_ = size + 4;
+	}
 }

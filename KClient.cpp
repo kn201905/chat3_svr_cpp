@@ -274,6 +274,13 @@ std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ ID: " << m_sckt_ID << ", b
 				return;
 			}
 		}
+		else if (clen_payload == 0x7f00)
+		{
+			// ペイロードで 64bit のものを送ってくることはない
+			// 自分自身をリサイクルに回してしまう（接続破棄）
+			m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
+			return;
+		}
 		else
 		{
 			// ペイロードサイズが 125 bytes 以下の場合
@@ -321,9 +328,7 @@ std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ ID: " << m_sckt_ID << ", b
 		}
 	}
 
-///===DEBUG===///
-std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ succeeded to read payload." << std::endl;
-
+	// ペイロードの内容解釈実行
 	switch (m_pClnt_Chat->WS_Read_Hndlr((uint16_t*)c_pdata_payload, bytes_payload))
 	{
 	case  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write:
@@ -342,7 +347,7 @@ std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ succeeded to read payload.
 		break;
 
 	case  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close:
-		m_pClnt_Chat->Reset_prvt_buf_write();
+//		m_pClnt_Chat->Reset_prvt_buf_write();
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 	}
