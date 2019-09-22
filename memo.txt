@@ -5,7 +5,7 @@
   send socket		16 kB
   private buffer	1.5 kB
 
-・Room Info			110 B + 30 B * 15 -> 560 B * 300 -> 168 kB <===
+・Room Info			110 B + 30 B * 15 -> 560 B * 500 -> 280 kB <===
   room Info			100 B
   member ID 4 B,  uview 3 B, name 22 B -> 29 B
 
@@ -13,4 +13,19 @@
 (init RI)
 
 ・Room Voice		610 B * 100 -> 64 kB * 300 -> 19.2 MB <===
+
+
+---------------------------------------------
+データフォーマット
+
+・EN_DN_Init_RI
+（基本）
+	2 bytes: 送信された部屋数（ 0 - 500くらい ）
+	2 bytes: 全部の部屋数
+（特別）
+	2 bytes: 0xffff -> 多重接続警告
+		2 bytes: 接続回数
+		2 bytes: 最初の接続が何秒前にあったか
+		2 bytes: パスフレーズ
+		以下、（基本）が続く
 

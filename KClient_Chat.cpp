@@ -17,6 +17,9 @@ extern KgLog  g_glog;
 using  std::cout;
 using  std::endl;
 
+
+KSmplList2<KRI, KRI::EN_NUM_KRI>  KRI::ms_List;
+
 ////////////////////////////////////////////////////////////////
 
 KLargeBuf::KInfo  KLargeBuf::msa_Info[ENN_NUM_BUF];
@@ -125,7 +128,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(uint16_t* p
 
 // -------------------------------------------------------------
 
-void  KClient_Chat::Req_ResendReq_toJSClnt(uint16_t rereq_jsc, uint16_t sec_wait)
+void  KClient_Chat::SetPayload_RRQ(uint16_t rereq_jsc, uint16_t sec_wait)
 {
 	this->Reset_prvt_buf_write();  // 念の為
 
@@ -145,6 +148,8 @@ void  KClient_Chat::Req_ResendReq_toJSClnt(uint16_t rereq_jsc, uint16_t sec_wait
 
 KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 {
+	static_assert(sizeof(KUInfo) == 30, "KUInfo");
+
 	// ----------------------------------
 	// まず、この KClient が InitRI の情報を得る資格を持っているかどうかのチェック
 	KRecd_SPRS* const  precd_SPRS = m_pKClnt->m_precd_SPRS;
@@ -171,21 +176,19 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 
 	// ----------------------------------
 	// Large バッファの準備をする
+	KLargeBuf::KInfo* const  pbufInfo = KLargeBuf::ReqBuf_Single();
+	if (pbufInfo == NULL)
+	{
+		// バッファの準備に失敗した場合は、JSクライアントに再送要求を出すように指示をする
+		m_rrq_time_InitRI = m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
+		this->SetPayload_RRQ(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC, N_JSC::EN_SEC_Wait_Init_RI);
+		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
+	}
 
-
-
-	// 遅延リクエストの試験
-	m_rrq_time_InitRI = m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
-	this->Req_ResendReq_toJSClnt(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC, N_JSC::EN_SEC_Wait_Init_RI);
-
+	// Large バッファに返信内容を書き込んでいく
+	// 特別な資格がないクライアントに対しては、最大バイト数は EN_BYTES_BUF とする。
 
 
 
 	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
-/*
-	KLargeBuf::KInfo* const  pbufInfo = KLargeBuf::ReqBuf_Single();
-	if (pbufInfo == NULL)
-	{
-	}
-*/
 }

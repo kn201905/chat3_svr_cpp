@@ -2,6 +2,7 @@
 
 #include "KServer.h"
 #include "KClient.h"
+#include "KSmplList.hpp"
 
 namespace  N_BUFFER
 {
@@ -74,6 +75,49 @@ public:
 	KLargeBuf_Initr();
 };
 
+////////////////////////////////////////////////////////////////
+
+struct  KUInfo  // paddingなしで 30 bytes
+{
+	enum  {
+		EN_MAX_LEN_uname = 10,
+	};
+
+	// データ送信時に、memcpy で利用される。また、ユーザ名の文字数も算出できる
+	// 利用していない場合、0 に設定すること
+	uint16_t  m_bytes_srlzd = 0;
+	uint32_t  m_uID = 0;
+	uint32_t  m_uview = 0;
+	uint16_t  ma_uname[EN_MAX_LEN_uname] = {};
+} __attribute__ ((gcc_struct, packed));  // memcpy を利用するため、packed にしている
+
+
+// pack なしで 568 bytes。おそらく、4 bytes 単位で pack されると思われる。
+// uint16_t と uint8_t は、まとめて 4 byte の領域になるもよう。
+struct  KRI
+{
+	enum  {
+		EN_MAX_CAPA = 15,  // ここを変更するのは難しい（ma_UsrList[] の制限）
+		EN_MAX_LEN_rm_prof = 50,
+
+		EN_NUM_KRI = 500,  // 同時作成できる部屋数を指定
+	};
+
+	// リトルエンディアンで 0-14（4bit値）の値を読み出す。
+	// 先頭値（bit 0-3）が 15 である場合は、特殊な部屋（固定部屋など）であることを表す
+	uint64_t  m_ui64_UsrList;
+	uint32_t  m_rmID = 0;
+	KUInfo  ma_uInfo[EN_MAX_CAPA];
+	uint16_t  ma_rm_prof[EN_MAX_LEN_rm_prof] = {};
+	uint16_t  m_topicID = 0;
+	uint8_t  m_capa = 0;
+
+	uint16_t  m_bytes_srlzd = 0;
+
+	// --------------------------------------------
+	static KSmplList2<KRI, EN_NUM_KRI>  ms_List;
+};
+
 
 ////////////////////////////////////////////////////////////////
 // KClient_Chat は、コンパイル時間を短縮するためだけにあるクラス
@@ -96,13 +140,14 @@ private:
 	// WS_Write の場合は、こちらの都合で send するため、クライアントが遅延リクエストを送ることはない
 	time_t  m_time_WS_Read_Hndlr;
 
-	//【注意】1) pdata_payload - 2 or pdata_payload - 4 のところにヘッダを書き込む
+	//【注意】pdata_payload の前 4 bytes に書き込みが行われることに要注意
+	// 1) pdata_payload - 2 or pdata_payload - 4 のところにヘッダを書き込む
 	// 2) size は 64 kB まで
 	inline void  Write_PayloadHdr(uint8_t* pdata_payload, size_t size);
 	// 何らかのエラーで、規定秒数後に、再送信の設定を行う
 	// リクエスト＋エラーと、規定秒数をペイロードで送る(ペイロードは 4 bytes)
 	// 送信にはプライベートバッファが利用されることに注意。念の為に、Reset_prvt_buf_write() はコールされる
-	void  Req_ResendReq_toJSClnt(uint16_t rereq_jsc, uint16_t sec_wait);
+	void  SetPayload_RRQ(uint16_t rereq_jsc, uint16_t sec_wait);
 
 	// --------------------------------------------
 	// 遅延リクエストを指示した場合、ここに記録される（遅延の必要がない場合は 0 に設定される）
