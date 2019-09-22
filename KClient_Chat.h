@@ -1,0 +1,126 @@
+#pragma once
+
+#include "KServer.h"
+#include "KClient.h"
+
+namespace  N_BUFFER
+{
+	enum {
+		EN_BYTES_Large = 51200,		// 50 KB
+		EN_NUM_Large = 40,
+	};
+}
+
+namespace  N_JSC
+{
+	enum {
+		// クライアントにリクエスト再送要求を出したとき、指示された秒数を下回る間隔で再送を要求してくるクライアントは
+		// 切断する。しかし、以下の秒数だけは、指定された秒数より下回っても許可することにする。
+		EN_SEC_Margin_Force_toCLOSE = 3,
+
+		EN_SEC_Wait_Init_RI = 5,
+	};
+
+	enum : uint16_t {
+		EN_UP_Init_RI = 1,
+		EN_DN_Init_RI,
+	};
+
+	enum : uint16_t {
+		EN_CMD_MASK = 0xff,
+		EN_BUSY_WAIT_SEC = 0x100,  // wait sec 付きの返信であったことを表す
+	};
+}
+
+////////////////////////////////////////////////////////////////
+
+class  KLargeBuf
+{
+	enum  {
+		EN_BYTES_BUF = 50 * 1024,  // 50 kB
+		ENN_NUM_BUF = 100,  // バッファの個数
+	};
+
+	friend class  KLargeBuf_Initr;
+public:
+	class  KInfo {
+		friend class  KLargeBuf;
+		friend class  KLargeBuf_Initr;
+		// 利用されているときは１以上の数値となる。数値は、何個のバッファを連続で使用しているかを表す
+		uint8_t  m_stt = 0;
+		uint16_t  m_ID = 0;  // ID は１以上の数とする（使用された個数と考えるため）
+		uint8_t*  m_pbuf = NULL;
+		uint8_t*  m_pbuf_tmnt = NULL;
+
+	public:
+		uint8_t*  GetBuf() { return  m_pbuf; }
+		uint8_t*  GetBuf_tmnt() { return  m_pbuf_tmnt; }
+	};
+
+	// バッファが確保できなかった場合、NULL が返される
+	static KInfo*  ReqBuf_Single();
+	static void  Return_Buf(KInfo* pinfo_buf);
+
+private:
+	static KInfo  msa_Info[ENN_NUM_BUF];
+	static const KInfo* const  msc_pInfo_tmnt;
+
+	static uint8_t  msa_buf[EN_BYTES_BUF * ENN_NUM_BUF];
+};
+
+class  KLargeBuf_Initr
+{
+public:
+	KLargeBuf_Initr();
+};
+
+
+////////////////////////////////////////////////////////////////
+// KClient_Chat は、コンパイル時間を短縮するためだけにあるクラス
+// リリース版では、KClient と KClient_Chat と統合すること
+
+class  KClient_Chat : public KClient_Chat_Intf
+{
+public:
+	virtual EN_Ret_WS_Read_Hndlr  WS_Read_Hndlr(uint16_t* pdata_payload, size_t bytes_payload) override;
+	// リリース版では、Reset_prvt_buf_write() は再々コールされるため、inline にすること
+	virtual void  Reset_prvt_buf_write() override;
+
+//	KClient*  m_pKClnt = NULL;
+private:
+	EN_Ret_WS_Read_Hndlr  Rcv_InitRI();
+
+	// --------------------------------------------
+	KLargeBuf::KInfo*  m_pInfo_LargeBuf = NULL;
+	// リソース不足のときに遅延評価する必要が多いため、WS_Read_Hndlr() がコールされたときの時刻を記録しておく
+	// WS_Write の場合は、こちらの都合で send するため、クライアントが遅延リクエストを送ることはない
+	time_t  m_time_WS_Read_Hndlr;
+
+	//【注意】1) pdata_payload - 2 or pdata_payload - 4 のところにヘッダを書き込む
+	// 2) size は 64 kB まで
+	inline void  Write_PayloadHdr(uint8_t* pdata_payload, size_t size);
+	// 何らかのエラーで、規定秒数後に、再送信の設定を行う
+	// リクエスト＋エラーと、規定秒数をペイロードで送る(ペイロードは 4 bytes)
+	// 送信にはプライベートバッファが利用されることに注意。念の為に、Reset_prvt_buf_write() はコールされる
+	void  Req_ResendReq_toJSClnt(uint16_t rereq_jsc, uint16_t sec_wait);
+
+	// --------------------------------------------
+	// 遅延リクエストを指示した場合、ここに記録される（遅延の必要がない場合は 0 に設定される）
+	time_t  m_rrq_time_InitRI = 0;
+};
+
+// -------------------------------------------------------------
+
+inline void  KClient_Chat::Write_PayloadHdr(uint8_t* pdata_payload, size_t size)
+{
+	if (size <= 125)
+	{
+		// 0x82: FIN(0x80) | バイナリフレーム(0x2)
+		*(uint16_t*)(pdata_payload - 2) = uint16_t(0x82 | (size << 8));
+	}
+	else
+	{
+		*(uint32_t*)(pdata_payload - 4) = uint32_t(0x82 | (126 << 8) | 
+											((size & 0xff00) << 16) | ((size & 0xff) << 24));
+	}	
+}

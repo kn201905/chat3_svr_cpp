@@ -1,0 +1,16 @@
+
+使用メモリ
+・KClient			22 kB * 2000 -> 44 MB <===
+  receive socket	4 kB
+  send socket		16 kB
+  private buffer	1.5 kB
+
+・Room Info			110 B + 30 B * 15 -> 560 B * 300 -> 168 kB <===
+  room Info			100 B
+  member ID 4 B,  uview 3 B, name 22 B -> 29 B
+
+・Large buffer		50 kB * 100 -> 5 MB <===
+(init RI)
+
+・Room Voice		610 B * 100 -> 64 kB * 300 -> 19.2 MB <===
+
