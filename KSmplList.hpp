@@ -82,8 +82,6 @@ private:
 template<typename T_Base, size_t size>
 class  KSmplList2
 {
-	friend class  KServer;
-
 public:
 	KSmplList2<T_Base, size>()
 	{
@@ -106,6 +104,14 @@ public:
 		return  m_pBegin;
 	}
 
+	KSmplListElmt<T_Base>*  Get_LastEmnt()
+	{
+		if (m_pNewElmt_inList == NULL)
+		{ return  m_pEnd; }
+
+		return  m_pNewElmt_inList->m_pPrev;
+	}
+
 	// バッファがフルで新しい要素を返せない場合、NULLが返される
 	KSmplListElmt<T_Base>*  Get_NewElmt()
 	{
@@ -114,6 +120,7 @@ public:
 		KSmplListElmt<T_Base>*  ret_val = m_pNewElmt_inList;
 		m_pNewElmt_inList = m_pNewElmt_inList->m_pNext;
 
+		m_len++;
 		return  ret_val;
 	}
 
@@ -144,7 +151,11 @@ public:
 		// pelmt が pEnd である場合は、何もしなくてよい
 
 		if (m_pNewElmt_inList == NULL) { m_pNewElmt_inList = m_pEnd; }
+
+		m_len--;
 	}
+
+	uint16_t  Get_Len() { return  m_len; }
 
 private:
 	KSmplListElmt<T_Base>  ma_Elmts[size];
@@ -153,4 +164,7 @@ private:
 	// リストがフルになっている場合は NULL となる
 	// リストが空の場合は m_pBegin が設定される
 	KSmplListElmt<T_Base>*  m_pNewElmt_inList = m_pBegin;
+
+	// Get_NewElmt() で＋１、MoveToEnd() で－１としている
+	uint16_t  m_len = 0;
 };

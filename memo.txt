@@ -22,6 +22,7 @@
 （基本）
 	2 bytes: 送信された部屋数（ 0 - 500くらい ）
 	2 bytes: 全部の部屋数
+	最新の RI から順にストアされている
 （特別）
 	2 bytes: 0xffff -> 多重接続警告
 		2 bytes: 接続回数
@@ -29,3 +30,13 @@
 		2 bytes: パスフレーズ
 		以下、（基本）が続く
 
+・KRI
+	uint32_t: m_rmID
+	uint16_t: m_topicID
+	uint16_t: m_bytes_rm_prof
+	uint16_t[]: ma_rm_prof
+
+	KUInfo の配列
+	m_bytes_srlzd == 0 で配列終了とする
+
+	uint8_t: m_capa

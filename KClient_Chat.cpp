@@ -21,6 +21,7 @@ using  std::endl;
 KSmplList2<KRI, KRI::EN_NUM_KRI>  KRI::ms_List;
 
 ////////////////////////////////////////////////////////////////
+// KLargeBuf
 
 KLargeBuf::KInfo  KLargeBuf::msa_Info[ENN_NUM_BUF];
 const KLargeBuf::KInfo* const  KLargeBuf::msc_pInfo_tmnt = msa_Info + ENN_NUM_BUF;
@@ -82,6 +83,43 @@ void  KLargeBuf::Return_Buf(KInfo* pinfo_buf)
 
 
 ////////////////////////////////////////////////////////////////
+// KRI
+
+// 書き込みバイト数の計算ミスを防ぐために uint8_t* を受け取るようにしている
+void  KRI::Srlz_to(uint8_t* pdst)
+{
+	*(uint32_t*)pdst = m_rmID;
+	*(uint16_t*)(pdst + 4) = m_topicID;
+	*(uint16_t*)(pdst + 6) = m_bytes_rm_prof;
+	memcpy(pdst + 8, ma_rm_prof, m_bytes_rm_prof);
+	pdst += 8 + m_bytes_rm_prof;
+
+	// ----------------------------------
+	// ユーザリストの書き込み
+	uint64_t  ui64_UsrList = m_ui64_UsrList;
+	// 最初の idx が 15 であった場合は、特殊部屋であるため処理を変える必要がある（← 未実装）
+	uint  idx = ui64_UsrList & 0xf;
+	ui64_UsrList >>= 4;
+
+	while (true)
+	{
+		const KUInfo* const  puInfo = &ma_uInfo[idx];
+		const size_t  bytes_uInfo = puInfo->m_bytes_srlzd;
+		memcpy(pdst, puInfo, bytes_uInfo);
+		pdst += bytes_uInfo;
+
+		idx = ui64_UsrList & 0xf;
+		if (idx == 15) { break; }
+		ui64_UsrList >>= 4;
+	}
+
+	*(uint16_t*)pdst = 0;  // m_bytes_srlzd = 0 として、配列終了としている
+	*(pdst + 1) = m_capa;
+}
+
+
+////////////////////////////////////////////////////////////////
+// コンパイル速度を優先させるためだけに存在している部分
 
 KClient_Chat  ga_KClnt_Chat[KServer::NUM_CLIENT];
 static KClient_Chat*  s_pKClnt_Chat_onGetNext = ga_KClnt_Chat;
@@ -94,6 +132,7 @@ KClient_Chat_Intf*  G_GetNext_Clnt_Chat()
 }
 
 ////////////////////////////////////////////////////////////////
+// KClient_Chat
 
 void  KClient_Chat::Reset_prvt_buf_write()
 {
@@ -146,6 +185,8 @@ void  KClient_Chat::Set_AsioWrtBuf_with_PLHdr_to_RRQ(uint16_t rereq_jsc, uint16_
 
 // -------------------------------------------------------------
 
+using  KRIElmt = KSmplListElmt<KRI>;
+
 KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 {
 //	static_assert(sizeof(KUInfo) == 30, "KUInfo");
@@ -190,28 +231,59 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 	// Large バッファに返信内容を書き込んでいく
 	// 特別な資格がないクライアントに対しては、最大バイト数は EN_BYTES_BUF とする。
 	uint8_t* const  pdata_payload = m_pInfo_LargeBuf->GetBuf() + 4;
-	uint16_t*  pbuf_large = (uint16_t*)pdata_payload;
-	const uint16_t* const  pbuf_tmnt_large = (uint16_t*)m_pInfo_LargeBuf->GetBuf_tmnt();
+	uint8_t*  pbuf_large = pdata_payload;
+	const uint8_t* const  c_pbuf_large_tmnt = m_pInfo_LargeBuf->GetBuf_tmnt();
 	// まずは、cmd ID を書き込んでおく
-	*pbuf_large++ = N_JSC::EN_DN_Init_RI;
+	*pbuf_large = N_JSC::EN_DN_Init_RI;
+	pbuf_large += 2;
 
 	// まず、多重接続が検出された場合の警告があれば、先に書き込んでおく
-	if (m_pKClnt->m_precd_SPRS->m_times_cnct != 1)
+	if (precd_SPRS->m_times_cnct != 1)
 	{
-		const KRecd_SPRS* const  cprecd_SPRS = m_pKClnt->m_precd_SPRS;
-		*pbuf_large++ = N_JSC::EN_DN_Init_RI__WARN_multi_cnct;
-		*pbuf_large++ = cprecd_SPRS->m_times_cnct;
-		*pbuf_large++ = uint16_t(m_time_WS_Read_Hndlr - cprecd_SPRS->m_time_1st_cnct);
-		*pbuf_large++ = cprecd_SPRS->m_pass_phrs;
+		*(uint16_t*)pbuf_large = N_JSC::EN_DN_Init_RI__WARN_multi_cnct;
+		*(uint16_t*)(pbuf_large + 2) = precd_SPRS->m_times_cnct;
+		*(uint16_t*)(pbuf_large + 4) = uint16_t(m_time_WS_Read_Hndlr - precd_SPRS->m_time_1st_cnct);
+		*(uint16_t*)(pbuf_large + 6) = precd_SPRS->m_pass_phrs;
+		pbuf_large += 8;
 	}
 
+	// ----------------------------------
+	// pbuf_large、c_pbuf_large_tmnt を用いて Init_RI のレスポンスを作成（最新のものからストアしていく）
 
+	const uint16_t  clen = KRI::ms_List.Get_Len();
+	*(uint16_t*)(pbuf_large + 2) = clen;  // 全部の部屋数
+	if (clen == 0)
+	{
+		*(uint16_t*)pbuf_large = 0;  // 送信される部屋数
+		pbuf_large += 4;
+	}
+	else
+	{
+		uint16_t* const  c_pnum_rm_send = (uint16_t*)pbuf_large;
+		pbuf_large += 4;
 
-	*pbuf_large++ = 0;
-	*pbuf_large++ = 0;
-	this->Make_AsioWrtBuf_with_PayloadHdr(pdata_payload, ((uint8_t*)pbuf_large) - ((uint8_t*)pdata_payload));
+		uint  remn = clen;
+		KRIElmt*  pelmt = KRI::ms_List.Get_LastEmnt();
+		while (true)
+		{
+			const uint  cbytes_srlzd = pelmt->m_bytes_srlzd;
+			if (pbuf_large + cbytes_srlzd < c_pbuf_large_tmnt)
+			{
+				pelmt->Srlz_to(pbuf_large);
+				pbuf_large += cbytes_srlzd;
+				if (--remn == 0) { break; }
+			}
+			else
+			{ break; }
+		}
 
+		// 送信される部屋数を記録する
+		*c_pnum_rm_send = uint16_t(clen - remn);
+	}
+	
+	// Init_RI を送信したことを記録しておく
+	precd_SPRS->mb_InitRI = false;
 
-
+	this->Make_AsioWrtBuf_with_PayloadHdr(pdata_payload, pbuf_large - pdata_payload);
 	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
 }

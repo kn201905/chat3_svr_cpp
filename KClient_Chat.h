@@ -105,16 +105,25 @@ struct  KRI
 		EN_NUM_KRI = 500,  // 同時作成できる部屋数を指定
 	};
 
-	// リトルエンディアンで 0-14（4bit値）の値を読み出す。
-	// 先頭値（bit 0-3）が 15 である場合は、特殊な部屋（固定部屋など）であることを表す
-	uint64_t  m_ui64_UsrList;
 	uint32_t  m_rmID = 0;
-	KUInfo  ma_uInfo[EN_MAX_CAPA];
-	uint16_t  ma_rm_prof[EN_MAX_LEN_rm_prof] = {};
 	uint16_t  m_topicID = 0;
+
+	uint16_t  m_bytes_rm_prof = 0;  // memcpy で利用される（念の為、256bytes 以上も想定して uint16_t）
+	uint16_t  ma_rm_prof[EN_MAX_LEN_rm_prof] = {};
+
+	// リトルエンディアンで 0-14（4bit値）の値が設定される
+	// 先頭値（bit 0-3）が 15 である場合は、特殊な部屋（固定部屋など）であることを表す
+	// 先頭にない 15 はエンドマークとなる
+	uint64_t  m_ui64_UsrList;
+	KUInfo  ma_uInfo[EN_MAX_CAPA];
+
 	uint8_t  m_capa = 0;
 
 	uint16_t  m_bytes_srlzd = 0;
+
+	// --------------------------------------------
+	// 書き込みバイト数の計算ミスを防ぐために uint8_t* を受け取るようにしている
+	void  Srlz_to(uint8_t* psrc);
 
 	// --------------------------------------------
 	static KSmplList2<KRI, EN_NUM_KRI>  ms_List;
