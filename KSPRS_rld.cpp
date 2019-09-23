@@ -114,7 +114,7 @@ RET_new_SPRS_recd_v4:
 
 		// -----------------------------------
 		// 接続回数が２回以上ではあるが、EN_Limit_Cnct 以下の場合の処理
-		precd_SPRS->mb_InitRI = false;  // パスフレーズ認証をクリアした後、InitRI が許可される
+		precd_SPRS->mb_InitRI = true;  // 前回の InitRI で false に設定されているはず
 		// 1000 - 9191 の範囲の数が設定される
 		precd_SPRS->m_pass_phrs = (uint16_t(rand()) & 0x1fff) + 1000;
 
@@ -172,7 +172,7 @@ RET_new_SPRS_recd_v6:
 
 		// -----------------------------------
 		// 接続回数が２回以上ではあるが、EN_Limit_Cnct 以下の場合の処理
-		precd_SPRS->mb_InitRI = false;  // パスフレーズ認証をクリアした後、InitRI が許可される
+		precd_SPRS->mb_InitRI = true;  // 前回の InitRI で false に設定されているはず
 		// 1000 - 9191 の範囲の数が設定される
 		precd_SPRS->m_pass_phrs = (uint16_t(rand()) & 0x1fff) + 1000;
 

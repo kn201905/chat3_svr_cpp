@@ -149,7 +149,7 @@ private:
 	//【注意】pdata_payload の前 4 bytes に書き込みが行われることに要注意
 	// 1) pdata_payload - 2 or pdata_payload - 4 のところにヘッダを書き込む
 	// 2) size は 64 kB まで
-	inline void  Prep_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size_payload);
+	inline void  Make_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size_payload);
 	// 何らかのエラーで、規定秒数後に、再送信の設定を行う
 	// リクエスト＋エラーと、規定秒数をペイロードで送る(ペイロードは 4 bytes)
 	// 送信にはプライベートバッファが利用されることに注意。念の為に、Reset_prvt_buf_write() はコールされる
@@ -159,7 +159,7 @@ private:
 // -------------------------------------------------------------
 
 // size は、ペイロードデータ部分のバイト数を表す
-inline void  KClient_Chat::Prep_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size)
+inline void  KClient_Chat::Make_AsioWrtBuf_with_PayloadHdr(uint8_t* pdata_payload, size_t size)
 {
 	if (size <= 125)
 	{

@@ -124,8 +124,8 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 	{ N_LogID::EN_ERR_Miss_WriteBytes_onWS, G_EN_ERR_Miss_WriteBytes_onWS,
 		" ▶ ERR: cbytes_wrtn != m_bytes_to_wrt in KClient::On_Async_Write_Hndlr_asWS(), sckt_ID: ", 24 },
 
-	{ N_LogID::EN_REQ_LargeBuf, G__PRINT__ui16, " ◀ EN_REQ_LargeBuf, buf_ID: ", 2 },
-	{ N_LogID::EN_REQ_LargeBuf_Exausted, NULL, " ▶▶▶ EN_REQ_LargeBuf_Exausted", 0 },
+	{ N_LogID::EN_REQ_LargeBuf, G__PRINT__ui16, " ◀ Info: REQ_LargeBuf, buf_ID: ", 2 },
+	{ N_LogID::EN_REQ_LargeBuf_Exausted, NULL, " ▶▶▶ ERR: REQ_LargeBuf_Exausted", 0 },
 
 	{ N_LogID::EN_NO_PMSN_InitRI_v4, G__PRINT__IP_v4, " EN_NO_PMSN_InitRI_v4: ", 4 },
 	{ N_LogID::EN_NO_PMSN_InitRI_v6, G__PRINT__IP_v6, " EN_NO_PMSN_InitRI_v6: ", 16 },

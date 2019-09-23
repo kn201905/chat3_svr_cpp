@@ -176,8 +176,8 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 
 	// ----------------------------------
 	// Large バッファの準備をする
-	const KLargeBuf::KInfo* const  cpbufInfo = KLargeBuf::ReqBuf_Single();
-	if (cpbufInfo == NULL)
+	m_pInfo_LargeBuf = KLargeBuf::ReqBuf_Single();
+	if (m_pInfo_LargeBuf == NULL)
 	{
 		// バッファの準備に失敗した場合は、JSクライアントに再送要求を出すように指示をする
 		m_rrq_time_InitRI = m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
@@ -189,9 +189,9 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 
 	// Large バッファに返信内容を書き込んでいく
 	// 特別な資格がないクライアントに対しては、最大バイト数は EN_BYTES_BUF とする。
-	uint8_t* const  pdata_payload = cpbufInfo->GetBuf() + 4;
+	uint8_t* const  pdata_payload = m_pInfo_LargeBuf->GetBuf() + 4;
 	uint16_t*  pbuf_large = (uint16_t*)pdata_payload;
-	const uint16_t* const  pbuf_tmnt_large = (uint16_t*)cpbufInfo->GetBuf_tmnt();
+	const uint16_t* const  pbuf_tmnt_large = (uint16_t*)m_pInfo_LargeBuf->GetBuf_tmnt();
 	// まずは、cmd ID を書き込んでおく
 	*pbuf_large++ = N_JSC::EN_DN_Init_RI;
 
@@ -209,7 +209,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 
 	*pbuf_large++ = 0;
 	*pbuf_large++ = 0;
-	this->Prep_AsioWrtBuf_with_PayloadHdr(pdata_payload, ((uint8_t*)pbuf_large) - ((uint8_t*)pdata_payload));
+	this->Make_AsioWrtBuf_with_PayloadHdr(pdata_payload, ((uint8_t*)pbuf_large) - ((uint8_t*)pdata_payload));
 
 
 
