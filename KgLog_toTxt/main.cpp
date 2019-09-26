@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <codecvt>  // wstring_convert を利用するため
+#include "/usr/include/c++/7/bits/locale_conv.h"
+
 #include "../__common/LogID.h"
 #include "../__common/_KString.h"
 #include "../__common/_KFile_W.h"
@@ -49,7 +52,6 @@ const char*  G__PRINT__IP_v6(uint16_t len);
 const char*  G_EN_Chk_IP_many_times_cnct_v4(uint16_t len);
 const char*  G_EN_Chk_IP_many_times_cnct_v6(uint16_t len);
 
-const char*  G_EN__WRITE_UTF16__STR(uint16_t len);
 const char*  G_EN_RCVD_Unhandle_opcode(uint16_t len);
 const char*  G_EN_ERR_tooBig_Payload(uint16_t len);
 const char*  G_EN_ERR_invalid_len_WS_pckt(uint16_t len);
@@ -57,6 +59,9 @@ const char*  G_EN_ERR_Miss_WriteBytes_onWS(uint16_t len);
 
 const char*  G__PRINT__ui64(uint16_t len);
 const char*  G__PRINT__ui16(uint16_t len);
+
+const char*  G_EN_Crt_Usr_v4(uint16_t len);
+const char*  G_EN_Crt_Usr_v6(uint16_t len);
 
 
 using  fn_ptr = const char* (*)(uint16_t);
@@ -131,6 +136,9 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 	{ N_LogID::EN_NO_PMSN_InitRI_v6, G__PRINT__IP_v6, " EN_NO_PMSN_InitRI_v6: ", 16 },
 
 	{N_LogID::EN_KUInfo_Exausted, NULL, "▶▶▶ ERR: KUInfo Exausted\n"},
+
+	{ N_LogID::EN_Crt_Usr_v4, G_EN_Crt_Usr_v4, " EN_Crt_Usr_v4 / uID: ", -1 },
+	{ N_LogID::EN_Crt_Usr_v6, G_EN_Crt_Usr_v6, " EN_Crt_Usr_v6 / uID: ", -1 },
 };
 
 class
@@ -422,53 +430,6 @@ const char*  G_EN_Chk_IP_many_times_cnct_v6(uint16_t len)
 
 // ------------------------------------------------------------------
 
-const char*  G_EN__WRITE_UTF16__STR(const uint16_t len)
-{
-	if (len & 1)
-	{
-		printf ("ERR: len の値が奇数になっています。len: %d", len);
-		return  "ERR: G_EN__WRITE_UTF16__STR()";
-	}
-
-	// utf-8 文字列に変換して、ログに書き出す
-	size_t  utf8_len = G_IP_str_utf16_to_utf8(sa_read_buf, len);
-	g_DstFile_W.Write(sa_read_buf, utf8_len);
-
-	return  NULL;
-}
-
-// ------------------------------------------------------------------
-// 戻り値は、変換後のバイト数（pstr から示されるバッファに、変換結果が格納される）
-// len はバイト数を表すことに注意。かつ、len は偶数であると想定している
-
-size_t  G_IP_str_utf16_to_utf8(char* io_pstr, uint16_t len)
-{
-	const char* const  pc_bgn = io_pstr;
-	char* pdst = io_pstr;
-
-	while (len > 0)
-	{
-		const char  chr_1 = *io_pstr++;
-		const char  chr_2 = *io_pstr++;
-		len -= 2;
-
-		if (chr_1 < 0x20 || chr_1 > 0x7e || chr_2 != 0)
-		{
-			// 想定外の文字が検出された場合、特定のキャラクタにして出力しておく
-			*pdst++ = 0xd0;
-			*pdst++ = 0xa8;
-		}
-		else
-		{
-			*pdst++ = chr_1;
-		}
-	}
-
-	return  pdst - pc_bgn;
-}
-
-// ------------------------------------------------------------------
-
 const char*  G__PRINT__ui64(uint16_t len)
 {
 	// 64bit 値の表示
@@ -536,5 +497,89 @@ const char*  G__PRINT__ui16(uint16_t len)
 	std::string  str = std::to_string(*(uint16_t*)sa_read_buf);
 	g_DstFile_W.Write(str.data(), str.size());
 	g_DstFile_W.Write_LF();
+	return  NULL;
+}
+
+// ------------------------------------------------------------------
+
+void  G__PRINT__ui32_HEX_4blk(uint32_t srcval)
+{
+	auto  tohex = [](uint8_t chr) -> char { return  chr < 10 ? chr + 0x30 : chr + 0x30 + 7 + 0x20; };
+	auto  cout_bytes = [&](uint8_t byte, char* pdst) {
+		*pdst++ = tohex( byte >> 4);
+		*pdst = tohex( byte & 0xf );
+	};
+	char  hexes[] = "00 00 00 00";
+
+	cout_bytes( srcval >> 24, hexes);
+
+	srcval &= 0xff'ffff;
+	cout_bytes( srcval >> 16, hexes + 3);
+
+	srcval &= 0xffff;
+	cout_bytes( srcval >> 8, hexes + 6);
+
+	cout_bytes( srcval & 0xff, hexes + 9);
+
+	g_DstFile_W.Write(hexes, 11);
+}
+
+// len = 4 + KUInfo.m_bytes_KUInfo となっている
+const char*  G_EN_Crt_Usr_v4(const uint16_t clen)
+{
+	// 4 bytes（ip_v4）＋ 2 bytes（KUInfo.m_bytes_KUInfo）
+	uint32_t*  psrc = (uint32_t*)(sa_read_buf + 4 + 2);
+
+	// uID の表示
+	std::string  str = std::to_string(*psrc) + "\n\t uview: ";
+	g_DstFile_W.Write(str.data(), str.size());
+	psrc++;
+
+	// uview の表示
+	G__PRINT__ui32_HEX_4blk(*psrc);
+
+	// ma_uname の表示
+	g_DstFile_W.Write("\n\t uname: ");
+	// ma_uname の終わりに \0 を付加しておく
+	*(uint16_t*)(sa_read_buf + clen) = 0;
+	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
+	std::string  utf8_str = converter.to_bytes((char16_t*)(sa_read_buf + 4 + 10));
+	g_DstFile_W.Write(utf8_str.data(), utf8_str.size());
+
+	// IP アドレスの表示
+	g_DstFile_W.Write("\n\t ip_v4: ");
+	S_PRINT_IP_v4(sa_read_buf);
+	g_DstFile_W.Write_LF();
+
+	return  NULL;
+}
+
+// len = 4 + KUInfo.m_bytes_KUInfo となっている
+const char*  G_EN_Crt_Usr_v6(const uint16_t clen)
+{
+	// 16 bytes（ip_v6）＋ 2 bytes（KUInfo.m_bytes_KUInfo）
+	uint32_t*  psrc = (uint32_t*)(sa_read_buf + 16 + 2);
+
+	// uID の表示
+	std::string  str = std::to_string(*psrc) + "\n\t uview: ";
+	g_DstFile_W.Write(str.data(), str.size());
+	psrc++;
+
+	// uview の表示
+	G__PRINT__ui32_HEX_4blk(*psrc);
+
+	// ma_uname の表示
+	g_DstFile_W.Write("\n\t uname: ");
+	// ma_uname の終わりに \0 を付加しておく
+	*(uint16_t*)(sa_read_buf + clen) = 0;
+	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
+	std::string  utf8_str = converter.to_bytes((char16_t*)(sa_read_buf + 16 + 10));
+	g_DstFile_W.Write(utf8_str.data(), utf8_str.size());
+
+	// IP アドレスの表示
+	g_DstFile_W.Write("\n\t ip_v6: ");
+	S_PRINT_IP_v6(sa_read_buf);
+	g_DstFile_W.Write_LF();
+
 	return  NULL;
 }

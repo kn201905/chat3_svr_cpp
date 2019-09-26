@@ -422,6 +422,14 @@ cout << "succeeded: regist by NORMAL User ID" << endl;
 	this->Make_AsioWrtBuf_with_PayloadHdr((uint8_t*)c_pdata_payload, 6);
 
 	// 新しくユーザ登録ができたため、ログに記録しておく
-
+	if (m_pKClnt->mb_Is_v4)
+	{
+		g_glog.Wrt_Crt_Usr_wUT_v4(m_pUInfo_Elmt, m_time_WS_Read_Hndlr, m_pKClnt->mu_IP.m_IPv4);
+	}
+	else
+	{
+		g_glog.Wrt_Crt_Usr_wUT_v6(m_pUInfo_Elmt, m_time_WS_Read_Hndlr, m_pKClnt->mu_IP.ma_IPv6);
+	}
+	
 	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
 }

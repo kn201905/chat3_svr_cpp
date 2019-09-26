@@ -7,6 +7,7 @@
 
 class  KIP_v4;
 class  KIP_v6;
+struct  KUInfo;
 
 // １回あたりに出力されるログの最大バイト数が分かっているものを記録するクラス
 
@@ -52,6 +53,9 @@ public:
 
 	EN_bErr  Wrt_IP_many_times_cnct_wUT_v4(uint16_t times, const KIP_v4& ip_v4);
 	EN_bErr  Wrt_IP_many_times_cnct_wUT_v6(uint16_t times, const KIP_v6& ip_v6);
+
+	EN_bErr  Wrt_Crt_Usr_wUT_v4(const KUInfo* pKUInfo, time_t unix_time, uint32_t ip_v4);
+	EN_bErr  Wrt_Crt_Usr_wUT_v6(const KUInfo* pKUInfo, time_t unix_time, const uint64_t* ip_v6);
 
 	// バッファにデータがあれば、それを fwrite させる
 	EN_bErr  Flush();

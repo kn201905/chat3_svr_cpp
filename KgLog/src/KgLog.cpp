@@ -7,6 +7,8 @@
 #include "../../__common/_KString.h"
 #include "../../__common/LogID.h"
 #include "../../KSPRS_rld.h"  // KIP_v4, KIP_v6 を利用するため
+#include "../../KClient_Chat.h"  // KUInfo を利用するため
+
 #include "KgLog.h"
 
 #include <assert.h>
@@ -616,6 +618,58 @@ KgLog::EN_bErr  KgLog::Wrt_IP_many_times_cnct_wUT_v6(const uint16_t times, const
 	*(uint64_t*)(cpnext + 24) = ip_v6.m_IPv6_down;
 
 	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(32);
+	sem_post(&m_sem_TA);
+
+	return  cret_val;
+}
+
+// ------------------------------------------------------------------
+
+KgLog::EN_bErr  KgLog::Wrt_Crt_Usr_wUT_v4(const KUInfo* const pKUInfo, const time_t unix_time, const uint32_t ip_v4)
+{
+	if (mb_IsUnderErr == EN_bErr::Err) { return  EN_bErr::Err; }
+
+	// UNIX タイムを書き込む
+	char* const  cpnext = m_TA_pos_next.Get_Ptr();
+	*cpnext = N_LogID::EN_UNIX_TIME;  // logID
+	*(uint16_t*)(cpnext + 1) = 8;  // len
+	*(time_t*)(cpnext + 3) = unix_time;
+
+	// IPv4 & KUInfo
+	const uint16_t  cbytes_KUInfo = pKUInfo->m_bytes_KUInfo;
+	*(uint8_t*)(cpnext + 11) = N_LogID::EN_Crt_Usr_v4;  // logID
+	*(uint16_t*)(cpnext + 12) = 4 + cbytes_KUInfo;  // len
+	*(uint32_t*)(cpnext + 14) = ip_v4;
+	memcpy(cpnext + 18, pKUInfo, cbytes_KUInfo);
+
+	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(18 + cbytes_KUInfo);
+	sem_post(&m_sem_TA);
+
+	return  cret_val;
+}
+
+// ------------------------------------------------------------------
+
+KgLog::EN_bErr  KgLog::Wrt_Crt_Usr_wUT_v6(
+		const KUInfo* const pKUInfo, const time_t unix_time, const uint64_t* const ip_v6)
+{
+	if (mb_IsUnderErr == EN_bErr::Err) { return  EN_bErr::Err; }
+
+	// UNIX タイムを書き込む
+	char* const  cpnext = m_TA_pos_next.Get_Ptr();
+	*cpnext = N_LogID::EN_UNIX_TIME;  // logID
+	*(uint16_t*)(cpnext + 1) = 8;  // len
+	*(time_t*)(cpnext + 3) = unix_time;
+
+	// IPv6 + KUInfo
+	const uint16_t  cbytes_KUInfo = pKUInfo->m_bytes_KUInfo;
+	*(uint8_t*)(cpnext + 11) = N_LogID::EN_Crt_Usr_v4;  // logID
+	*(uint16_t*)(cpnext + 12) = 16 + cbytes_KUInfo;  // len
+	*(uint64_t*)(cpnext + 14) = *ip_v6;			// ip_v6 up
+	*(uint64_t*)(cpnext + 22) = *(ip_v6 + 1);	// ip_v6 down
+	memcpy(cpnext + 30, pKUInfo, cbytes_KUInfo);
+
+	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(30 + cbytes_KUInfo);
 	sem_post(&m_sem_TA);
 
 	return  cret_val;
