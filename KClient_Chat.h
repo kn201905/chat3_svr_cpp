@@ -20,11 +20,14 @@ namespace  N_JSC
 		EN_SEC_Margin_Force_toCLOSE = 3,
 
 		EN_SEC_Wait_Init_RI = 5,
+		EN_SEC_Wait_Crt_Usr = 60,	// 普通は起こり得ないと思うけど、、、
 	};
 
 	enum : uint16_t {
 		EN_UP_Init_RI = 1,
 		EN_DN_Init_RI,
+		EN_UP_Crt_Usr,
+		EN_DN_Crt_Usr,
 	};
 
 	enum : uint16_t {
@@ -79,19 +82,29 @@ public:
 
 ////////////////////////////////////////////////////////////////
 
-struct  KUInfo  // paddingなしで 30 bytes
+struct  KUInfo  // paddingなしで 30 bytes（KSmplList2 で 46 bytes）
 {
 	enum  {
+		EN_NUM_KUInfo = 3000,  // 46 bytes * 3000 = 138 kB
+
 		EN_MAX_LEN_uname = 10,
 	};
 
 	// データ送信時に、memcpy で利用される。また、ユーザ名の文字数も算出できる
 	// 利用していない場合、0 に設定すること
-	uint16_t  m_bytes_srlzd = 0;
+	uint16_t  m_bytes_KUInfo = 0;  // KUInfo 全体のバイト数（利用している部分のみ）
 	uint32_t  m_uID = 0;
 	uint32_t  m_uview = 0;
 	uint16_t  ma_uname[EN_MAX_LEN_uname] = {};
+
+	// --------------------------------------------
+	static KSmplList2<KUInfo, EN_NUM_KUInfo>  ms_List;
+
+	static uint32_t  Crt_New_SuperUsrID();
+	static uint32_t  Crt_New_UsrID();
 } __attribute__ ((gcc_struct, packed));  // memcpy を利用するため、packed にしている
+
+using  KUInfo_Elmt = KSmplListElmt<KUInfo>;
 
 
 // pack なしで 568 bytes。おそらく、4 bytes 単位で pack されると思われる。
@@ -99,27 +112,26 @@ struct  KUInfo  // paddingなしで 30 bytes
 struct  KRI
 {
 	enum  {
-		EN_MAX_CAPA = 15,  // ここを変更するのは難しい（ma_UsrList[] の制限）
+		EN_MAX_CAPA = 15,
 		EN_MAX_LEN_rm_prof = 50,
 
 		EN_NUM_KRI = 500,  // 同時作成できる部屋数を指定
 	};
 
+	uint16_t  m_bytes_send = 0;  // send するバイト数
+
 	uint32_t  m_rmID = 0;
-	uint16_t  m_topicID = 0;
+	uint16_t  m_topicID = 0;  // 特殊部屋は、topicID で表すことにする
+
+	uint8_t  m_capa = 0;
+	uint8_t  m_num_usrs_cur = 0;  // 現在の参加人数
 
 	uint16_t  m_bytes_rm_prof = 0;  // memcpy で利用される（念の為、256bytes 以上も想定して uint16_t）
 	uint16_t  ma_rm_prof[EN_MAX_LEN_rm_prof] = {};
 
-	// リトルエンディアンで 0-14（4bit値）の値が設定される
-	// 先頭値（bit 0-3）が 15 である場合は、特殊な部屋（固定部屋など）であることを表す
-	// 先頭にない 15 はエンドマークとなる
-	uint64_t  m_ui64_UsrList;
-	KUInfo  ma_uInfo[EN_MAX_CAPA];
+	// エラーを検出するために、利用していないところは NULL に設定することにする
+	KUInfo_Elmt*  ma_pUInfo[EN_MAX_CAPA];
 
-	uint8_t  m_capa = 0;
-
-	uint16_t  m_bytes_srlzd = 0;
 
 	// --------------------------------------------
 	// 書き込みバイト数の計算ミスを防ぐために uint8_t* を受け取るようにしている
@@ -141,18 +153,24 @@ public:
 	// リリース版では、Reset_prvt_buf_write() は再々コールされるため、inline にすること
 	virtual void  Reset_prvt_buf_write() override;
 
+	// m_pUInfo をクリアしたり、バッファを解放したりする
+	virtual void  Recycle() override;
+
 //	KClient*  m_pKClnt = NULL;
 private:
-	EN_Ret_WS_Read_Hndlr  Rcv_InitRI();
+	EN_Ret_WS_Read_Hndlr  UP_InitRI();
+	EN_Ret_WS_Read_Hndlr  UP_Crt_Usr(uint16_t* pdata_payload, size_t bytes_payload);
 
 	// --------------------------------------------
+	KUInfo_Elmt*  m_pUInfo_Elmt = NULL;
+
 	KLargeBuf::KInfo*  m_pInfo_LargeBuf = NULL;
 	// リソース不足のときに遅延評価する必要が多いため、WS_Read_Hndlr() がコールされたときの時刻を記録しておく
 	// WS_Write の場合は、こちらの都合で send するため、クライアントが遅延リクエストを送ることはない
 	time_t  m_time_WS_Read_Hndlr;
 
 	// 遅延リクエストを指示した場合、ここに記録される（遅延の必要がない場合は 0 に設定される）
-	time_t  m_rrq_time_InitRI = 0;
+	time_t  m_rrq_time_InitRI_CrtUsr = 0;  // InitRI と CrtUsr は最初の１回だけであるから、まとめて扱っても問題ないはず
 
 	// --------------------------------------------
 	//【注意】pdata_payload の前 4 bytes に書き込みが行われることに要注意

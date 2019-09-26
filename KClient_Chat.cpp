@@ -12,6 +12,11 @@
 #include "KgLog/src/KgLog.h"
 
 
+///===DEBUG===///
+extern void  G_cout_ui32(uint32_t srcval);
+extern void  G_cout_xbytes(const uint8_t* psrc, const size_t bytes);
+
+
 extern KgLog  g_glog;
 
 using  std::cout;
@@ -19,6 +24,8 @@ using  std::endl;
 
 
 KSmplList2<KRI, KRI::EN_NUM_KRI>  KRI::ms_List;
+KSmplList2<KUInfo, KUInfo::EN_NUM_KUInfo>  KUInfo::ms_List;
+
 
 ////////////////////////////////////////////////////////////////
 // KLargeBuf
@@ -83,38 +90,57 @@ void  KLargeBuf::Return_Buf(KInfo* pinfo_buf)
 
 
 ////////////////////////////////////////////////////////////////
+// KUInfo
+// 現在は、単純に super user は 1 - 999、通常の user は 1000 - としている
+
+static  uint32_t  s_super_usr_ID = 1;  // 現在は暫定的な仕様
+uint32_t  KUInfo::Crt_New_SuperUsrID()
+{
+	return  s_super_usr_ID++;
+}
+
+// -------------------------------------------------------------
+
+static  uint32_t  s_usr_ID = 1000;  // 現在は暫定的な仕様
+uint32_t  KUInfo::Crt_New_UsrID()
+{
+	return  s_usr_ID++;
+}
+
+////////////////////////////////////////////////////////////////
 // KRI
 
 // 書き込みバイト数の計算ミスを防ぐために uint8_t* を受け取るようにしている
 void  KRI::Srlz_to(uint8_t* pdst)
 {
+	const uint8_t* const  c_pdst_begin = pdst;
+
 	*(uint32_t*)pdst = m_rmID;
 	*(uint16_t*)(pdst + 4) = m_topicID;
-	*(uint16_t*)(pdst + 6) = m_bytes_rm_prof;
-	memcpy(pdst + 8, ma_rm_prof, m_bytes_rm_prof);
-	pdst += 8 + m_bytes_rm_prof;
+	*(pdst + 6) = m_capa;
+	*(pdst + 7) = m_num_usrs_cur;
+	*(uint16_t*)(pdst + 8) = m_bytes_rm_prof;
+	memcpy(pdst + 10, ma_rm_prof, m_bytes_rm_prof);
+	pdst += 10 + m_bytes_rm_prof;
 
 	// ----------------------------------
 	// ユーザリストの書き込み
-	uint64_t  ui64_UsrList = m_ui64_UsrList;
-	// 最初の idx が 15 であった場合は、特殊部屋であるため処理を変える必要がある（← 未実装）
-	uint  idx = ui64_UsrList & 0xf;
-	ui64_UsrList >>= 4;
-
+	KUInfo_Elmt**  pp_UInfo = ma_pUInfo;
+	int  i = m_num_usrs_cur;
 	while (true)
 	{
-		const KUInfo* const  puInfo = &ma_uInfo[idx];
-		const size_t  bytes_uInfo = puInfo->m_bytes_srlzd;
-		memcpy(pdst, puInfo, bytes_uInfo);
-		pdst += bytes_uInfo;
+		const KUInfo* const  cpUInfo = *pp_UInfo;
+		const size_t  cbytes_uInfo = cpUInfo->m_bytes_KUInfo;
+		memcpy(pdst, cpUInfo, cbytes_uInfo);
+		pdst += cbytes_uInfo;
 
-		idx = ui64_UsrList & 0xf;
-		if (idx == 15) { break; }
-		ui64_UsrList >>= 4;
+		if (--i == 0) { break; }
+		pp_UInfo++;
 	}
 
-	*(uint16_t*)pdst = 0;  // m_bytes_srlzd = 0 として、配列終了としている
-	*(pdst + 1) = m_capa;
+	// ----------------------------------
+///===DEBUG===///
+	assert(m_bytes_send == pdst - c_pdst_begin);
 }
 
 
@@ -124,7 +150,7 @@ void  KRI::Srlz_to(uint8_t* pdst)
 KClient_Chat  ga_KClnt_Chat[KServer::NUM_CLIENT];
 static KClient_Chat*  s_pKClnt_Chat_onGetNext = ga_KClnt_Chat;
 
-KClient_Chat_Intf*  G_GetNext_Clnt_Chat()
+KClient_Chat_Intf*  G_GetNext_KClnt_Chat()
 {
 	KClient_Chat_Intf*  ret_val = s_pKClnt_Chat_onGetNext;
 	s_pKClnt_Chat_onGetNext++;
@@ -144,24 +170,44 @@ void  KClient_Chat::Reset_prvt_buf_write()
 }
 
 // -------------------------------------------------------------
+
+void  KClient_Chat::Recycle()
+{
+	this->Reset_prvt_buf_write();
+
+	if (m_pUInfo_Elmt)
+	{
+		// 念のため
+		m_pUInfo_Elmt->m_bytes_KUInfo = 0;
+		m_pUInfo_Elmt->m_uID = 0;
+
+		KUInfo::ms_List.MoveToEnd(m_pUInfo_Elmt);
+		m_pUInfo_Elmt = NULL;
+	}
+}
+
+// -------------------------------------------------------------
 // 受信したものに対してレスポンスを帰す場合は、KClient::m_asio_prvt_buf_write に値を設定して、EN_Write を返す
 
-KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(uint16_t* pdata_payload, size_t bytes_payload)
+KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(
+											uint16_t* const c_pdata_payload, const size_t c_bytes_payload)
 {
 	m_time_WS_Read_Hndlr = ::time(NULL);
 
-	const uint16_t  cop = *pdata_payload++;
+	const uint16_t  cop = *c_pdata_payload;
 	switch (cop)
 	{
 		case  N_JSC::EN_UP_Init_RI:
-			cout << "RECEIVE Init_RI" << endl;
-			return  this->Rcv_InitRI();
-		
+			return  this->UP_InitRI();
+
+		case  N_JSC::EN_UP_Crt_Usr:
+			return  this->UP_Crt_Usr(c_pdata_payload, c_bytes_payload);
+
 		default:
 			cout << "RECEIVE Unknown OP" << endl;
 	}
 
-	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Raad;
+	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Read;
 //	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
 }
 
@@ -175,9 +221,9 @@ void  KClient_Chat::Set_AsioWrtBuf_with_PLHdr_to_RRQ(uint16_t rereq_jsc, uint16_
 	m_pKClnt->m_asio_prvt_buf_write.data_ = pbuf;
 	m_pKClnt->m_asio_prvt_buf_write.size_ = 6;
 
-	// ペイロードヘッダを書き込む
+	// ペイロードヘッダを書き込む（ma_ui8_prvt_buf を先頭から利用する）
 	*pbuf++ = 0x82;  // FIN: 0x80, バイナリフレーム 0x2
-	*pbuf++ = 0x04;  // ペイロード長 4bytes: 遅延対象となったコマンド（rereq_jsc）+ sec_wait
+	*pbuf++ = 0x04;  // ペイロード長 4bytes: 遅延対象となったコマンド（2 bytes）+ sec_wait（2 bytes）
 	*(uint16_t*)pbuf = rereq_jsc;
 	pbuf += 2;
 	*(uint16_t*)pbuf = sec_wait;
@@ -185,9 +231,9 @@ void  KClient_Chat::Set_AsioWrtBuf_with_PLHdr_to_RRQ(uint16_t rereq_jsc, uint16_
 
 // -------------------------------------------------------------
 
-using  KRIElmt = KSmplListElmt<KRI>;
+using  KRI_Elmt = KSmplListElmt<KRI>;
 
-KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
+KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_InitRI()
 {
 //	static_assert(sizeof(KUInfo) == 30, "KUInfo");
 
@@ -205,14 +251,14 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 	}
 
 	// まず、遅延リクエストのチェックを行う
-	if (m_rrq_time_InitRI)
+	if (m_rrq_time_InitRI_CrtUsr)
 	{
-		if (m_time_WS_Read_Hndlr < m_rrq_time_InitRI)
+		if (m_time_WS_Read_Hndlr < m_rrq_time_InitRI_CrtUsr)
 		{
 			// 規定の時間より早く再リクエストを送ってきた場合は、不正クラアントとして切断する
 			return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
 		}
-		m_rrq_time_InitRI = 0;
+		m_rrq_time_InitRI_CrtUsr = 0;
 	}
 
 	// ----------------------------------
@@ -221,7 +267,8 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 	if (m_pInfo_LargeBuf == NULL)
 	{
 		// バッファの準備に失敗した場合は、JSクライアントに再送要求を出すように指示をする
-		m_rrq_time_InitRI = m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
+		m_rrq_time_InitRI_CrtUsr
+			= m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
 
 		this->Set_AsioWrtBuf_with_PLHdr_to_RRQ(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC
 												, N_JSC::EN_SEC_Wait_Init_RI);
@@ -263,14 +310,14 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 		pbuf_large += 4;
 
 		uint  remn = clen;
-		KRIElmt*  pelmt = KRI::ms_List.Get_LastEmnt();
+		KRI_Elmt*  pelmt = KRI::ms_List.Get_LastEmnt();
 		while (true)
 		{
-			const uint  cbytes_srlzd = pelmt->m_bytes_srlzd;
-			if (pbuf_large + cbytes_srlzd < c_pbuf_large_tmnt)
+			const uint  cbytes_send = pelmt->m_bytes_send;
+			if (pbuf_large + cbytes_send < c_pbuf_large_tmnt)
 			{
 				pelmt->Srlz_to(pbuf_large);
-				pbuf_large += cbytes_srlzd;
+				pbuf_large += cbytes_send;
 				if (--remn == 0) { break; }
 			}
 			else
@@ -285,5 +332,96 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::Rcv_InitRI()
 	precd_SPRS->mb_InitRI = false;
 
 	this->Make_AsioWrtBuf_with_PayloadHdr(pdata_payload, pbuf_large - pdata_payload);
+	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
+}
+
+// -------------------------------------------------------------
+
+KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_Crt_Usr(
+								uint16_t* const c_pdata_payload, const size_t cbytes_payload)
+{
+	if (m_pUInfo_Elmt)
+	{
+		// 既にユーザ登録をしている場合、不正接続とみなして即クローズさせる
+		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
+	}
+
+	// 遅延リクエストのチェック（まず、発生することはないはずだけど、、）
+	if (m_rrq_time_InitRI_CrtUsr)
+	{
+		if (m_time_WS_Read_Hndlr < m_rrq_time_InitRI_CrtUsr)
+		{
+			// 規定の時間より早く再リクエストを送ってきた場合は、不正クラアントとして切断する
+			return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
+		}
+		m_rrq_time_InitRI_CrtUsr = 0;
+	}
+
+	// 通信エラーのチェック（peyload の長さのチェック）
+///===DEBUG===///
+cout << "KClient_Chat::WS_Read_Hndlr: RECEIVE EN_UP_Crt_Usr" << endl;
+	if ((*(c_pdata_payload + 1) << 1) != cbytes_payload)
+	{
+///===DEBUG===///
+cout << "failed: bytes_payload is NOT expected value" << endl;
+		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
+	}
+
+	// ----------------------------------
+	// ユーザ登録を開始する
+	m_pUInfo_Elmt = KUInfo::ms_List.Get_NewElmt();
+	if (m_pUInfo_Elmt == NULL)
+	{
+		// まず、ユーザ登録数が上限を超えることはないと思うけれど、、、
+		g_glog.WriteID_with_UnixTime(N_LogID::EN_KUInfo_Exausted);
+
+		m_rrq_time_InitRI_CrtUsr
+			= m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Crt_Usr - N_JSC::EN_SEC_Margin_Force_toCLOSE;
+
+		this->Set_AsioWrtBuf_with_PLHdr_to_RRQ(N_JSC::EN_DN_Crt_Usr | N_JSC::EN_BUSY_WAIT_SEC
+												, N_JSC::EN_SEC_Wait_Crt_Usr);
+		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
+	}
+
+	// KUInfo::ms_List から、新規要素を取得できたため、新規ユーザ登録を実行する
+	// ----------------------------------
+	// m_uID の設定
+///===SuperUser設定を見直すこと===///
+	if (m_pKClnt->m_precd_SPRS == NULL)
+	{ return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close; }
+
+	if (m_pKClnt->m_precd_SPRS->mb_IsDev)
+	{
+		m_pUInfo_Elmt->m_uID = KUInfo::Crt_New_SuperUsrID();
+///===DEBUG===///
+cout << "succeeded: regist by SUPER User ID" << endl;
+	}
+	else
+	{
+		m_pUInfo_Elmt->m_uID = KUInfo::Crt_New_UsrID();
+///===DEBUG===///
+cout << "succeeded: regist by NORMAL User ID" << endl;
+	}
+	
+	// ----------------------------------
+	// m_uview の設定
+	m_pUInfo_Elmt->m_uview = *(uint32_t*)(c_pdata_payload + 4);
+
+	// ----------------------------------
+	// uname & bytes の設定
+	// +6: コマンド１、コンテナサイズ１、reserved２、uview２
+	// 上の個数は、uint16 で数えた個数であるから、bytes で考えると x2 で -12
+	memcpy(m_pUInfo_Elmt->ma_uname, c_pdata_payload + 6, cbytes_payload - 12);
+	// m_bytes_KUInfo = bytes of uname + 10
+	m_pUInfo_Elmt->m_bytes_KUInfo = uint16_t(cbytes_payload - 2);
+
+	// ----------------------------------
+	// uID を生成したことを通知
+	*c_pdata_payload = N_JSC::EN_DN_Crt_Usr;
+	*(uint32_t*)(c_pdata_payload + 1) = m_pUInfo_Elmt->m_uID;
+	this->Make_AsioWrtBuf_with_PayloadHdr((uint8_t*)c_pdata_payload, 6);
+
+	// 新しくユーザ登録ができたため、ログに記録しておく
+
 	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
 }

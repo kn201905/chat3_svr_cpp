@@ -129,6 +129,8 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 
 	{ N_LogID::EN_NO_PMSN_InitRI_v4, G__PRINT__IP_v4, " EN_NO_PMSN_InitRI_v4: ", 4 },
 	{ N_LogID::EN_NO_PMSN_InitRI_v6, G__PRINT__IP_v6, " EN_NO_PMSN_InitRI_v6: ", 16 },
+
+	{N_LogID::EN_KUInfo_Exausted, NULL, "▶▶▶ ERR: KUInfo Exausted\n"},
 };
 
 class

@@ -63,6 +63,8 @@ namespace  N_LogID
 		EN_NO_PMSN_InitRI_v4,	// -> IPv4 4 bytes
 		EN_NO_PMSN_InitRI_v6,	// -> IPv6 16 bytes
 
+		EN_KUInfo_Exausted,		// KUinfo のリストを使い切った（まず、ありえないけど、、）
+
 		EN_END_LOG_ID
 	};
 	// ---------------------------------------------------------------

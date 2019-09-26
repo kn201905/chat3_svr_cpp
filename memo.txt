@@ -1,18 +1,21 @@
 
 使用メモリ
-・KClient			22 kB * 2000 -> 44 MB <===
+・KClient			22 kB * 3000 -> 66 MB <===
   receive socket	4 kB
   send socket		16 kB
   private buffer	1.5 kB
 
-・Room Info			110 B + 30 B * 15 -> 560 B * 500 -> 280 kB <===
+・KRI				240 B * 500 = 120 kB <===
+　管理用			12 B
   room Info			100 B
-  member ID 4 B,  uview 3 B, name 22 B -> 29 B
+  KUInfo*			8 B * 15 = 120 B
 
 ・Large buffer		50 kB * 100 -> 5 MB <===
 (init RI)
 
 ・Room Voice		610 B * 100 -> 64 kB * 300 -> 19.2 MB <===
+
+・KUInfo			48 B * 3000 = 138kB <===
 
 
 ---------------------------------------------
@@ -40,3 +43,20 @@
 	m_bytes_srlzd == 0 で配列終了とする
 
 	uint8_t: m_capa
+
+
+・RRQ
+	2 bytes(1): 遅延対象となったコマンド | EN_BUSY_WAIT_SEC
+	2 bytes(1): 遅延待機秒数
+
+
+・EN_UP_Crt_Usr
+	2 bytes(1): EN_UP_Crt_Usr
+	2 bytes(1): コンテナサイズ（＝ bytes_payload / 2 に等しいはず。エラーチェック用 ＆ ユーザ名len算出用）
+	4 bytes(2): reserved（将来、パスワード用に利用する予定）
+	4 bytes(2): uview
+	以下、uname が utf16 で格納される
+
+・EN_DN_Crt_Usr
+	2 bytes(1): EN_DN_Crt_Usr
+	4 bytes(2): 生成された uID	

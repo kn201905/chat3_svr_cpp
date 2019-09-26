@@ -38,7 +38,7 @@ public:
 
 	// ID のみを書き込むバージョン
 	EN_bErr  WriteID(uint8_t logID);
-	EN_bErr  WriteID_with_UnixTime(uint8_t logID);
+	EN_bErr  WriteID_with_UnixTime(uint8_t logID);  // 11 bytes（UnixTime）+ 3 bytes（ID + len の 0）を書き込む
 	// 万一、データエンコードエラーがあっても、後続するデータが読めるように、bytes を記録することにする
 	// bytes には、logID の１バイトは含まない
 	EN_bErr  WriteID(uint8_t logID, const void* cp_data, uint16_t bytes);

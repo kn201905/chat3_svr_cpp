@@ -19,7 +19,7 @@ class  KClient_Chat_Intf
 	friend class  KServer;
 
 public:
-	enum class  EN_Ret_WS_Read_Hndlr { EN_Write, EN_Raad, EN_Close };
+	enum class  EN_Ret_WS_Read_Hndlr { EN_Write, EN_Read, EN_Close };
 
 	// 戻り値： write が必要な場合 true が返される
 	// write が必要な場合は、m_asio_prvt_buf_write に設定を書き込んでおくこと
@@ -30,11 +30,13 @@ public:
 	// 2) m_pClnt_Chat->WS_Read_Hndlr() == EN_CLOSE のとき
 	virtual void  Reset_prvt_buf_write() =0;
 
+	// m_pUInfo をクリアしたり、バッファを解放したりする
+	virtual void  Recycle() =0;
+
 	// KServer のコンストラクタで設定される
+	// コード実行中、不変。開発中のコンパイル時間を短縮するためだけに利用するメンバ変数
 	KClient*  m_pKClnt = NULL;
 };
-
-extern KClient_Chat_Intf*  G_GetNext_Clnt_Chat();
 
 
 ////////////////////////////////////////////////////////////////
@@ -85,7 +87,7 @@ private:
 	boost::asio::ip::tcp::socket  m_socket{ *::g_pioc };
 
 	uint8_t  ma_ui8_prvt_buf[BYTES_PRIVATE_BUF];
-	boost::asio::mutable_buffers_1  m_asio_prvt_buf_read{ ma_ui8_prvt_buf, BYTES_PRIVATE_BUF };
+	const boost::asio::mutable_buffers_1  mc_asio_prvt_buf_read{ ma_ui8_prvt_buf, BYTES_PRIVATE_BUF };
 	boost::asio::mutable_buffers_1  m_asio_prvt_buf_write{ ma_ui8_prvt_buf, BYTES_PRIVATE_BUF };
 	size_t  m_bytes_to_wrt;  // async_write() の橋渡しのみで利用される
 
@@ -108,6 +110,7 @@ private:
 
 ///===DEVELOPMENT===///
 	// リリース版では削除されるメンバ変数
-	KClient_Chat_Intf*  m_pClnt_Chat;
+	// 設定は KServer でなされる。一度設定されたら不変。
+	KClient_Chat_Intf*  m_pKClnt_Chat;
 };
 

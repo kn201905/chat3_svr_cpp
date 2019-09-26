@@ -70,6 +70,8 @@ int main()
 	auto  work = boost::asio::make_work_guard(ioc);
 	tcp::acceptor  accptr{ ioc, tcp::endpoint(tcp::v4(), ::NUM_LISTEN_PORT) };
 
+	// KServer が構築されるときに、KClient が構築される。 KClient は、メンバ変数に m_socket{ *::g_pioc } を持っているため、
+	// g_pioc が生成された後に KServer が構築される必要がある。
 	KServer  chat_svr{ ioc, accptr };
 
 	// -------------------------------------
@@ -77,8 +79,9 @@ int main()
 	{
 		std::signal( i,
 			[](int) {
-				constexpr KCnstString  ce_str{ "SIGINT is called." };
-				GLOG_BIN_WriteStr_withUT(ce_str);
+				std::cout << "detect SIGINT, call g_pioc->stop()..." << std::endl;
+//				constexpr KCnstString  ce_str{ "SIGINT is called." };
+//				GLOG_BIN_WriteStr_withUT(ce_str);
 
 				::g_pioc->stop();
 			}
