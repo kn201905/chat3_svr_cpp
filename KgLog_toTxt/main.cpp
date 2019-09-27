@@ -5,16 +5,19 @@
 #include <stdint.h>
 #include <string.h>
 
-#include <codecvt>  // wstring_convert を利用するため
-#include "/usr/include/c++/7/bits/locale_conv.h"
+//#include <codecvt>  // wstring_convert を利用するため
+//#include "/usr/include/c++/7/bits/locale_conv.h"
 
 #include "../__common/LogID.h"
 #include "../__common/_KString.h"
 #include "../__common/_KFile_W.h"
-//#include "../__common/KScktStr.h"
+#include "../__common/_KUtf16_toUtf8.hpp"
 
 using  std::cout;
 using  std::endl;
+
+// Utf16 を 約1000 文字まで、言い換えると Utf8 のバッファを約3000文字まで対応させる
+KUtf16_toUtf8<3000>  g_KUft16_toUtf8;
 
 struct  KFile_AutoClose
 {
@@ -57,8 +60,9 @@ const char*  G_EN_ERR_tooBig_Payload(uint16_t len);
 const char*  G_EN_ERR_invalid_len_WS_pckt(uint16_t len);
 const char*  G_EN_ERR_Miss_WriteBytes_onWS(uint16_t len);
 
-const char*  G__PRINT__ui64(uint16_t len);
-const char*  G__PRINT__ui16(uint16_t len);
+const char*  G__PRINT__ui16_DEC(uint16_t len);
+const char*  G__PRINT__ui32_DEC(uint16_t len);
+const char*  G__PRINT__ui64_DEC(uint16_t len);
 
 const char*  G_EN_Crt_Usr_v4(uint16_t len);
 const char*  G_EN_Crt_Usr_v6(uint16_t len);
@@ -109,13 +113,13 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 	{ N_LogID::EN_ERR_on_Async_Write_Crt_WScktCnctn, NULL,
 			" ▶ ERR: async_write() in KClient::Crt_WebScktConnection_Write_Hndlr()\n", 0 },
 
-	{ N_LogID::EN_ERR_on_Async_Read_WebSckt, G__PRINT__ui64,
+	{ N_LogID::EN_ERR_on_Async_Read_WebSckt, G__PRINT__ui64_DEC,
 		" ▶ ERR: async_read() in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 8 },
-	{ N_LogID::EN_ERR_not_FIN_Recieved, G__PRINT__ui64,
+	{ N_LogID::EN_ERR_not_FIN_Recieved, G__PRINT__ui64_DEC,
 		" ▶ ERR: 断片化された WSパケットを受信しました(FINフラグ:0) in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 8 },
-	{ N_LogID::EN_RCVD_CLOSE_opcode, G__PRINT__ui64,
+	{ N_LogID::EN_RCVD_CLOSE_opcode, G__PRINT__ui64_DEC,
 		" ▶ WARN: CLOSEパケットを受信しました(opcode: 8) in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 8 },
-	{ N_LogID::EN_RCVD_PING_opcode, G__PRINT__ui64,
+	{ N_LogID::EN_RCVD_PING_opcode, G__PRINT__ui64_DEC,
 		" ▶ WARN: PINGパケットを受信しました(opcode: 9) in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 8 },
 	{ N_LogID::EN_RCVD_Unhandle_opcode, G_EN_RCVD_Unhandle_opcode,
 		" ▶ WARN: 不明な opcode パケットを受信しました in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 9 },
@@ -124,12 +128,12 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 	{ N_LogID::EN_ERR_invalid_len_WS_pckt, G_EN_ERR_invalid_len_WS_pckt,
 		" ▶ ERR: ペイロードサイズが不正値になっています in KClient::On_Async_Read_Hndlr_asWS(), sckt_ID: ", 24 },
 
-	{ N_LogID::EN_ERR_on_Async_Write_WebSckt, G__PRINT__ui64,
+	{ N_LogID::EN_ERR_on_Async_Write_WebSckt, G__PRINT__ui64_DEC,
 		" ▶ ERR: async_write() in KClient::On_Async_Write_Hndlr_asWS(), sckt_ID: ", 8 },
 	{ N_LogID::EN_ERR_Miss_WriteBytes_onWS, G_EN_ERR_Miss_WriteBytes_onWS,
 		" ▶ ERR: cbytes_wrtn != m_bytes_to_wrt in KClient::On_Async_Write_Hndlr_asWS(), sckt_ID: ", 24 },
 
-	{ N_LogID::EN_REQ_LargeBuf, G__PRINT__ui16, " ◀ Info: REQ_LargeBuf, buf_ID: ", 2 },
+	{ N_LogID::EN_REQ_LargeBuf, G__PRINT__ui16_DEC, " ◀ Info: REQ_LargeBuf, buf_ID: ", 2 },
 	{ N_LogID::EN_REQ_LargeBuf_Exausted, NULL, " ▶▶▶ ERR: REQ_LargeBuf_Exausted", 0 },
 
 	{ N_LogID::EN_NO_PMSN_InitRI_v4, G__PRINT__IP_v4, " EN_NO_PMSN_InitRI_v4: ", 4 },
@@ -139,6 +143,8 @@ const static  sca_jump_list[N_LogID::EN_END_LOG_ID]
 
 	{ N_LogID::EN_Crt_Usr_v4, G_EN_Crt_Usr_v4, " EN_Crt_Usr_v4 / uID: ", -1 },
 	{ N_LogID::EN_Crt_Usr_v6, G_EN_Crt_Usr_v6, " EN_Crt_Usr_v6 / uID: ", -1 },
+
+	{ N_LogID::EN_Close_Usr, G__PRINT__ui32_DEC, " EN_Close_Usr / uID: ", 4 },
 };
 
 class
@@ -430,17 +436,6 @@ const char*  G_EN_Chk_IP_many_times_cnct_v6(uint16_t len)
 
 // ------------------------------------------------------------------
 
-const char*  G__PRINT__ui64(uint16_t len)
-{
-	// 64bit 値の表示
-	std::string  str = std::to_string(*(uint64_t*)sa_read_buf);
-	g_DstFile_W.Write(str.data(), str.size());
-	g_DstFile_W.Write_LF();
-	return  NULL;
-}
-
-// ------------------------------------------------------------------
-
 const char*  G_EN_RCVD_Unhandle_opcode(uint16_t len)
 {
 	// sckt_ID の表示
@@ -491,10 +486,32 @@ const char*  G_EN_ERR_Miss_WriteBytes_onWS(uint16_t len)
 
 // ------------------------------------------------------------------
 
-const char*  G__PRINT__ui16(uint16_t len)
+const char*  G__PRINT__ui16_DEC(uint16_t len)
 {
 	// 16 bit 値の表示
 	std::string  str = std::to_string(*(uint16_t*)sa_read_buf);
+	g_DstFile_W.Write(str.data(), str.size());
+	g_DstFile_W.Write_LF();
+	return  NULL;
+}
+
+// ------------------------------------------------------------------
+
+const char*  G__PRINT__ui32_DEC(uint16_t len)
+{
+	// 16 bit 値の表示
+	std::string  str = std::to_string(*(uint32_t*)sa_read_buf);
+	g_DstFile_W.Write(str.data(), str.size());
+	g_DstFile_W.Write_LF();
+	return  NULL;
+}
+
+// ------------------------------------------------------------------
+
+const char*  G__PRINT__ui64_DEC(uint16_t len)
+{
+	// 64bit 値の表示
+	std::string  str = std::to_string(*(uint64_t*)sa_read_buf);
 	g_DstFile_W.Write(str.data(), str.size());
 	g_DstFile_W.Write_LF();
 	return  NULL;
@@ -540,11 +557,11 @@ const char*  G_EN_Crt_Usr_v4(const uint16_t clen)
 
 	// ma_uname の表示
 	g_DstFile_W.Write("\n\t uname: ");
-	// ma_uname の終わりに \0 を付加しておく
-	*(uint16_t*)(sa_read_buf + clen) = 0;
-	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
-	std::string  utf8_str = converter.to_bytes((char16_t*)(sa_read_buf + 4 + 10));
-	g_DstFile_W.Write(utf8_str.data(), utf8_str.size());
+	if (g_KUft16_toUtf8.Cvt_toUtf8((uint16_t*)(sa_read_buf + 4 + 10), (clen - 14) >> 1) == false)
+	{
+		return  "G_EN_Crt_Usr_v4(): g_KUft16_toUtf8.Cvt_toUtf8() == false が検出されました\n";
+	}
+	g_DstFile_W.Write(g_KUft16_toUtf8.ma_buf_Utf8, g_KUft16_toUtf8.m_len_Utf8);
 
 	// IP アドレスの表示
 	g_DstFile_W.Write("\n\t ip_v4: ");
@@ -554,7 +571,7 @@ const char*  G_EN_Crt_Usr_v4(const uint16_t clen)
 	return  NULL;
 }
 
-// len = 4 + KUInfo.m_bytes_KUInfo となっている
+// len = 16 + KUInfo.m_bytes_KUInfo となっている
 const char*  G_EN_Crt_Usr_v6(const uint16_t clen)
 {
 	// 16 bytes（ip_v6）＋ 2 bytes（KUInfo.m_bytes_KUInfo）
@@ -570,11 +587,11 @@ const char*  G_EN_Crt_Usr_v6(const uint16_t clen)
 
 	// ma_uname の表示
 	g_DstFile_W.Write("\n\t uname: ");
-	// ma_uname の終わりに \0 を付加しておく
-	*(uint16_t*)(sa_read_buf + clen) = 0;
-	std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
-	std::string  utf8_str = converter.to_bytes((char16_t*)(sa_read_buf + 16 + 10));
-	g_DstFile_W.Write(utf8_str.data(), utf8_str.size());
+	if (g_KUft16_toUtf8.Cvt_toUtf8((uint16_t*)(sa_read_buf + 16 + 10), (clen - 26) >> 1) == false)
+	{
+		return  "G_EN_Crt_Usr_v6(): g_KUft16_toUtf8.Cvt_toUtf8() == false が検出されました\n";
+	}
+	g_DstFile_W.Write(g_KUft16_toUtf8.ma_buf_Utf8, g_KUft16_toUtf8.m_len_Utf8);
 
 	// IP アドレスの表示
 	g_DstFile_W.Write("\n\t ip_v6: ");

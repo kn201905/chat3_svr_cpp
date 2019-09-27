@@ -57,6 +57,8 @@ public:
 	EN_bErr  Wrt_Crt_Usr_wUT_v4(const KUInfo* pKUInfo, time_t unix_time, uint32_t ip_v4);
 	EN_bErr  Wrt_Crt_Usr_wUT_v6(const KUInfo* pKUInfo, time_t unix_time, const uint64_t* ip_v6);
 
+	EN_bErr  Wrt_uID_wUT(uint8_t logID, uint32_t uID, time_t unix_time);
+
 	// バッファにデータがあれば、それを fwrite させる
 	EN_bErr  Flush();
 

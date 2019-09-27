@@ -149,6 +149,8 @@ struct  KRI
 class  KClient_Chat : public KClient_Chat_Intf
 {
 public:
+	// JSクライアントが UInt16Array を利用するため、エンディアンを考慮して pdata_payload は uint16_t* で受けている
+	// ただし、ペイロードサイズの計算をミスしやすいため、サイズは bytes で受けている
 	virtual EN_Ret_WS_Read_Hndlr  WS_Read_Hndlr(uint16_t* pdata_payload, size_t bytes_payload) override;
 	// リリース版では、Reset_prvt_buf_write() は再々コールされるため、inline にすること
 	virtual void  Reset_prvt_buf_write() override;

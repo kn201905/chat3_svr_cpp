@@ -4,7 +4,6 @@
 #include <stddef.h>
 #include <boost/asio.hpp>
 
-#include "KServer.h"
 #include "KClient_Chat.h"
 #include "KSPRS_rld.h"  // InitRI の許可判断に必要
 
@@ -177,6 +176,9 @@ void  KClient_Chat::Recycle()
 
 	if (m_pUInfo_Elmt)
 	{
+		// ユーザ登録していた人のクローズ記録は残す
+		g_glog.Wrt_uID_wUT(N_LogID::EN_Close_Usr, m_pUInfo_Elmt->m_uID, m_time_WS_Read_Hndlr);
+
 		// 念のため
 		m_pUInfo_Elmt->m_bytes_KUInfo = 0;
 		m_pUInfo_Elmt->m_uID = 0;

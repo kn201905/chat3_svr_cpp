@@ -644,7 +644,6 @@ KgLog::EN_bErr  KgLog::Wrt_Crt_Usr_wUT_v4(const KUInfo* const pKUInfo, const tim
 
 	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(18 + cbytes_KUInfo);
 	sem_post(&m_sem_TA);
-
 	return  cret_val;
 }
 
@@ -671,7 +670,27 @@ KgLog::EN_bErr  KgLog::Wrt_Crt_Usr_wUT_v6(
 
 	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(30 + cbytes_KUInfo);
 	sem_post(&m_sem_TA);
+	return  cret_val;
+}
 
+// ------------------------------------------------------------------
+
+KgLog::EN_bErr  KgLog::Wrt_uID_wUT(const uint8_t logID, const uint32_t uID, const time_t unix_time)
+{
+	if (mb_IsUnderErr == EN_bErr::Err) { return  EN_bErr::Err; }
+
+	// UNIX タイムを書き込む
+	char* const  cpnext = m_TA_pos_next.Get_Ptr();
+	*cpnext = N_LogID::EN_UNIX_TIME;  // logID
+	*(uint16_t*)(cpnext + 1) = 8;  // len
+	*(time_t*)(cpnext + 3) = unix_time;
+
+	*(uint8_t*)(cpnext + 11) = logID;  // logID
+	*(uint16_t*)(cpnext + 12) = 4;  // len
+	*(uint32_t*)(cpnext + 14) = uID;
+
+	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(18);
+	sem_post(&m_sem_TA);
 	return  cret_val;
 }
 

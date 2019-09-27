@@ -66,8 +66,10 @@ namespace  N_LogID
 		EN_KUInfo_Exausted,		// KUinfo のリストを使い切った（まず、ありえないけど、、）
 
 		// 固定長のものを先に書き込んでしまう
-		EN_Crt_Usr_v4,		// 4 bytes +  KUInfo->m_bytes_KUInfo bytes
-		EN_Crt_Usr_v6,		// 8 bytes(up) + 8 bytes(down) +  KUInfo->m_bytes_KUInfo bytes
+		EN_Crt_Usr_v4,		// -> 4 bytes +  KUInfo->m_bytes_KUInfo bytes
+		EN_Crt_Usr_v6,		// -> 8 bytes(up) + 8 bytes(down) +  KUInfo->m_bytes_KUInfo bytes
+
+		EN_Close_Usr,		// -> uID 4 bytes
 
 		EN_END_LOG_ID
 	};
