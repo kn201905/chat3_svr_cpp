@@ -30,13 +30,41 @@ public:
 	// 2) m_pClnt_Chat->WS_Read_Hndlr() == EN_CLOSE のとき
 	virtual void  Reset_prvt_buf_write() =0;
 
-	// m_pUInfo をクリアしたり、バッファを解放したりする
-	virtual void  Recycle() =0;
+	// バッファを解放したりする
+	virtual void  Clean_KClntChat() =0;
 
 	// KServer のコンストラクタで設定される
 	// コード実行中、不変。開発中のコンパイル時間を短縮するためだけに利用するメンバ変数
 	KClient*  m_pKClnt = NULL;
 };
+
+
+////////////////////////////////////////////////////////////////
+// KClient が、uID を受け取ると KKUInfo が生成される
+
+struct  KUInfo  // paddingなしで 30 bytes（KSmplList2 で 46 bytes）
+{
+	enum  {
+		EN_NUM_KUInfo = 3000,  // 46 bytes * 3000 = 138 kB
+
+		EN_MAX_LEN_uname = 10,
+	};
+
+	// データ送信時に、memcpy で利用される。また、ユーザ名の文字数も算出できる
+	// Clean() により、m_bytes_KUInfo と m_uID が 0 に設定される（一応の措置。意味ないかも）
+	uint16_t  m_bytes_KUInfo = 0;  // KUInfo 全体のバイト数（利用している部分のみ）
+	uint32_t  m_uID = 0;
+	uint32_t  m_uview = 0;
+	uint16_t  ma_uname[EN_MAX_LEN_uname] = {};
+
+	// --------------------------------------------
+	static KSmplList2<KUInfo, EN_NUM_KUInfo>  ms_List;
+
+	static uint32_t  Crt_New_SuperUsrID();
+	static uint32_t  Crt_New_UsrID();
+} __attribute__ ((gcc_struct, packed));  // memcpy を利用するため、packed にしている
+
+using  KUInfo_Elmt = KSmplListElmt<KUInfo>;
 
 
 ////////////////////////////////////////////////////////////////
@@ -76,7 +104,12 @@ public:
 
 	// 以下は websocket としての応答を実行する
 	void  On_Async_Read_Hndlr_asWS(const boost::system::error_code& crerr, size_t bytes_read);
+	// WS が確立されたあとは、時刻情報の要求が多いため、静的変数で保持しておく
+	// SPRS中で、WS が確立されていないときは古い情報となるが、多少の誤差は覚悟でこの値を利用する
+	static time_t  ms_time_atRead_asWS;
 	void  On_Async_Write_Hndlr_asWS(const boost::system::error_code& crerr, const size_t cbytes_wrtn);
+
+	void  Clean();
 
 private:
 	// -----------------------------------------------
@@ -92,10 +125,22 @@ private:
 	size_t  m_bytes_to_wrt;  // async_write() の橋渡しのみで利用される
 
 	// -----------------------------------------------
-	// SPRS で監視対象になっている場合 NULL でなくなる
+	// この範囲のメンバ変数は Clean() で初期化される（Clean() は KServer.Recycle_Clnt() からコールされる）
+	// Clean() の際は、KClient_Chat.Clean_KClntChat() もコールされる
+
+	// SPRS で監視対象になっている場合 NULL でなくなる（SPRS と相互に接続される）
 	// KClient を close するときには、SPRS 側の WebSckt を NULL にすること
 	KRecd_SPRS*  m_precd_SPRS = NULL;
-	bool  mb_IsDevIP = false;
+	// 今のところ、SuperUser 判定は、DevIP のみ
+	// 今後は、ログイン時のパスワードなどの設定で, SuperUser フラグを ON にする
+	bool  mb_IsSuperUser = false;
+
+	// ユーザ名が設定されると、NULL でなくなる
+	// SPRS で監視中は, UInfo の uname と uview の柄の変更はできない
+	KUInfo_Elmt*  m_pKUInfo_Elmt = NULL;
+
+	EN_STATUS  m_stt_cur = EN_STATUS::EN_No_WS;
+	// -----------------------------------------------
 
 	// mu_IP の設定は、KServer::On_Accpt_Svr() で実行される
 	// g_glog への記録は、ユーザ名が設定されたときに実行される
@@ -104,9 +149,6 @@ private:
 		uint32_t  m_IPv4;
 		uint64_t  ma_IPv6[2];  // up -> down の順で記録
 	} mu_IP;
-
-	// -----------------------------------------------
-	EN_STATUS  m_stt_cur = EN_STATUS::EN_No_WS;
 
 ///===DEVELOPMENT===///
 	// リリース版では削除されるメンバ変数

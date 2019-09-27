@@ -89,24 +89,6 @@ void  KLargeBuf::Return_Buf(KInfo* pinfo_buf)
 
 
 ////////////////////////////////////////////////////////////////
-// KUInfo
-// 現在は、単純に super user は 1 - 999、通常の user は 1000 - としている
-
-static  uint32_t  s_super_usr_ID = 1;  // 現在は暫定的な仕様
-uint32_t  KUInfo::Crt_New_SuperUsrID()
-{
-	return  s_super_usr_ID++;
-}
-
-// -------------------------------------------------------------
-
-static  uint32_t  s_usr_ID = 1000;  // 現在は暫定的な仕様
-uint32_t  KUInfo::Crt_New_UsrID()
-{
-	return  s_usr_ID++;
-}
-
-////////////////////////////////////////////////////////////////
 // KRI
 
 // 書き込みバイト数の計算ミスを防ぐために uint8_t* を受け取るようにしている
@@ -170,22 +152,9 @@ void  KClient_Chat::Reset_prvt_buf_write()
 
 // -------------------------------------------------------------
 
-void  KClient_Chat::Recycle()
+void  KClient_Chat::Clean_KClntChat()
 {
 	this->Reset_prvt_buf_write();
-
-	if (m_pUInfo_Elmt)
-	{
-		// ユーザ登録していた人のクローズ記録は残す
-		g_glog.Wrt_uID_wUT(N_LogID::EN_Close_Usr, m_pUInfo_Elmt->m_uID, m_time_WS_Read_Hndlr);
-
-		// 念のため
-		m_pUInfo_Elmt->m_bytes_KUInfo = 0;
-		m_pUInfo_Elmt->m_uID = 0;
-
-		KUInfo::ms_List.MoveToEnd(m_pUInfo_Elmt);
-		m_pUInfo_Elmt = NULL;
-	}
 }
 
 // -------------------------------------------------------------
@@ -194,8 +163,6 @@ void  KClient_Chat::Recycle()
 KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(
 											uint16_t* const c_pdata_payload, const size_t c_bytes_payload)
 {
-	m_time_WS_Read_Hndlr = ::time(NULL);
-
 	const uint16_t  cop = *c_pdata_payload;
 	switch (cop)
 	{
@@ -209,8 +176,8 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::WS_Read_Hndlr(
 			cout << "RECEIVE Unknown OP" << endl;
 	}
 
-	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Read;
-//	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;
+	// 暫定的な措置
+	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
 }
 
 // -------------------------------------------------------------
@@ -246,16 +213,16 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_InitRI()
 	{
 		// InitRI の受信資格を持っていな場合、ソケットを即閉じる
 		if (m_pKClnt->mb_Is_v4)
-		{ g_glog.WriteID_with_UnixTime(N_LogID::EN_NO_PMSN_InitRI_v4, &m_pKClnt->mu_IP.m_IPv4, 4); }
+		{ g_glog.WriteID_wUT(N_LogID::EN_NO_PMSN_InitRI_v4, &m_pKClnt->mu_IP.m_IPv4, 4, KClient::ms_time_atRead_asWS); }
 		else
-		{ g_glog.WriteID_with_UnixTime(N_LogID::EN_NO_PMSN_InitRI_v6, &m_pKClnt->mu_IP.ma_IPv6, 16); }
+		{ g_glog.WriteID_wUT(N_LogID::EN_NO_PMSN_InitRI_v6, &m_pKClnt->mu_IP.ma_IPv6, 16, KClient::ms_time_atRead_asWS); }
 		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
 	}
 
 	// まず、遅延リクエストのチェックを行う
 	if (m_rrq_time_InitRI_CrtUsr)
 	{
-		if (m_time_WS_Read_Hndlr < m_rrq_time_InitRI_CrtUsr)
+		if (KClient::ms_time_atRead_asWS < m_rrq_time_InitRI_CrtUsr)
 		{
 			// 規定の時間より早く再リクエストを送ってきた場合は、不正クラアントとして切断する
 			return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
@@ -270,7 +237,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_InitRI()
 	{
 		// バッファの準備に失敗した場合は、JSクライアントに再送要求を出すように指示をする
 		m_rrq_time_InitRI_CrtUsr
-			= m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
+			= KClient::ms_time_atRead_asWS + N_JSC::EN_SEC_Wait_Init_RI - N_JSC::EN_SEC_Margin_Force_toCLOSE;
 
 		this->Set_AsioWrtBuf_with_PLHdr_to_RRQ(N_JSC::EN_DN_Init_RI | N_JSC::EN_BUSY_WAIT_SEC
 												, N_JSC::EN_SEC_Wait_Init_RI);
@@ -291,7 +258,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_InitRI()
 	{
 		*(uint16_t*)pbuf_large = N_JSC::EN_DN_Init_RI__WARN_multi_cnct;
 		*(uint16_t*)(pbuf_large + 2) = precd_SPRS->m_times_cnct;
-		*(uint16_t*)(pbuf_large + 4) = uint16_t(m_time_WS_Read_Hndlr - precd_SPRS->m_time_1st_cnct);
+		*(uint16_t*)(pbuf_large + 4) = uint16_t(KClient::ms_time_atRead_asWS - precd_SPRS->m_time_1st_cnct);
 		*(uint16_t*)(pbuf_large + 6) = precd_SPRS->m_pass_phrs;
 		pbuf_large += 8;
 	}
@@ -342,7 +309,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_InitRI()
 KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_Crt_Usr(
 								uint16_t* const c_pdata_payload, const size_t cbytes_payload)
 {
-	if (m_pUInfo_Elmt)
+	if (m_pKClnt->m_pKUInfo_Elmt)
 	{
 		// 既にユーザ登録をしている場合、不正接続とみなして即クローズさせる
 		return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
@@ -351,7 +318,7 @@ KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr  KClient_Chat::UP_Crt_Usr(
 	// 遅延リクエストのチェック（まず、発生することはないはずだけど、、）
 	if (m_rrq_time_InitRI_CrtUsr)
 	{
-		if (m_time_WS_Read_Hndlr < m_rrq_time_InitRI_CrtUsr)
+		if (KClient::ms_time_atRead_asWS < m_rrq_time_InitRI_CrtUsr)
 		{
 			// 規定の時間より早く再リクエストを送ってきた場合は、不正クラアントとして切断する
 			return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close;
@@ -371,14 +338,14 @@ cout << "failed: bytes_payload is NOT expected value" << endl;
 
 	// ----------------------------------
 	// ユーザ登録を開始する
-	m_pUInfo_Elmt = KUInfo::ms_List.Get_NewElmt();
-	if (m_pUInfo_Elmt == NULL)
+	KUInfo_Elmt* const  c_pKUInfo_Elmt = m_pKClnt->m_pKUInfo_Elmt = KUInfo::ms_List.Get_NewElmt();
+	if (c_pKUInfo_Elmt == NULL)
 	{
 		// まず、ユーザ登録数が上限を超えることはないと思うけれど、、、
 		g_glog.WriteID_with_UnixTime(N_LogID::EN_KUInfo_Exausted);
 
 		m_rrq_time_InitRI_CrtUsr
-			= m_time_WS_Read_Hndlr + N_JSC::EN_SEC_Wait_Crt_Usr - N_JSC::EN_SEC_Margin_Force_toCLOSE;
+			= KClient::ms_time_atRead_asWS + N_JSC::EN_SEC_Wait_Crt_Usr - N_JSC::EN_SEC_Margin_Force_toCLOSE;
 
 		this->Set_AsioWrtBuf_with_PLHdr_to_RRQ(N_JSC::EN_DN_Crt_Usr | N_JSC::EN_BUSY_WAIT_SEC
 												, N_JSC::EN_SEC_Wait_Crt_Usr);
@@ -388,49 +355,45 @@ cout << "failed: bytes_payload is NOT expected value" << endl;
 	// KUInfo::ms_List から、新規要素を取得できたため、新規ユーザ登録を実行する
 	// ----------------------------------
 	// m_uID の設定
-///===SuperUser設定を見直すこと===///
-	if (m_pKClnt->m_precd_SPRS == NULL)
-	{ return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Close; }
-
-	if (m_pKClnt->m_precd_SPRS->mb_IsDev)
+	if (m_pKClnt->mb_IsSuperUser)
 	{
-		m_pUInfo_Elmt->m_uID = KUInfo::Crt_New_SuperUsrID();
+		c_pKUInfo_Elmt->m_uID = KUInfo::Crt_New_SuperUsrID();
 ///===DEBUG===///
 cout << "succeeded: regist by SUPER User ID" << endl;
 	}
 	else
 	{
-		m_pUInfo_Elmt->m_uID = KUInfo::Crt_New_UsrID();
+		c_pKUInfo_Elmt->m_uID = KUInfo::Crt_New_UsrID();
 ///===DEBUG===///
 cout << "succeeded: regist by NORMAL User ID" << endl;
 	}
 	
 	// ----------------------------------
 	// m_uview の設定
-	m_pUInfo_Elmt->m_uview = *(uint32_t*)(c_pdata_payload + 4);
+	c_pKUInfo_Elmt->m_uview = *(uint32_t*)(c_pdata_payload + 4);
 
 	// ----------------------------------
 	// uname & bytes の設定
 	// +6: コマンド１、コンテナサイズ１、reserved２、uview２
 	// 上の個数は、uint16 で数えた個数であるから、bytes で考えると x2 で -12
-	memcpy(m_pUInfo_Elmt->ma_uname, c_pdata_payload + 6, cbytes_payload - 12);
+	memcpy(m_pKClnt->m_pKUInfo_Elmt->ma_uname, c_pdata_payload + 6, cbytes_payload - 12);
 	// m_bytes_KUInfo = bytes of uname + 10
-	m_pUInfo_Elmt->m_bytes_KUInfo = uint16_t(cbytes_payload - 2);
+	c_pKUInfo_Elmt->m_bytes_KUInfo = uint16_t(cbytes_payload - 2);
 
 	// ----------------------------------
 	// uID を生成したことを通知
 	*c_pdata_payload = N_JSC::EN_DN_Crt_Usr;
-	*(uint32_t*)(c_pdata_payload + 1) = m_pUInfo_Elmt->m_uID;
+	*(uint32_t*)(c_pdata_payload + 1) = c_pKUInfo_Elmt->m_uID;
 	this->Make_AsioWrtBuf_with_PayloadHdr((uint8_t*)c_pdata_payload, 6);
 
 	// 新しくユーザ登録ができたため、ログに記録しておく
 	if (m_pKClnt->mb_Is_v4)
 	{
-		g_glog.Wrt_Crt_Usr_wUT_v4(m_pUInfo_Elmt, m_time_WS_Read_Hndlr, m_pKClnt->mu_IP.m_IPv4);
+		g_glog.Wrt_Crt_Usr_wUT_v4(c_pKUInfo_Elmt, KClient::ms_time_atRead_asWS, m_pKClnt->mu_IP.m_IPv4);
 	}
 	else
 	{
-		g_glog.Wrt_Crt_Usr_wUT_v6(m_pUInfo_Elmt, m_time_WS_Read_Hndlr, m_pKClnt->mu_IP.ma_IPv6);
+		g_glog.Wrt_Crt_Usr_wUT_v6(c_pKUInfo_Elmt, KClient::ms_time_atRead_asWS, m_pKClnt->mu_IP.ma_IPv6);
 	}
 	
 	return  KClient_Chat_Intf::EN_Ret_WS_Read_Hndlr::EN_Write;

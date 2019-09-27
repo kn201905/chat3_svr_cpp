@@ -44,6 +44,7 @@ public:
 	// bytes には、logID の１バイトは含まない
 	EN_bErr  WriteID(uint8_t logID, const void* cp_data, uint16_t bytes);
 	EN_bErr  WriteID_with_UnixTime(uint8_t logID, const void* cp_data, uint16_t bytes);
+	EN_bErr  WriteID_wUT(uint8_t logID, const void* cp_data, uint16_t bytes, time_t unix_time);
 
 	EN_bErr  Wrt_Push_devIP_v4(const KIP_v4& ip_v4);
 	EN_bErr  Wrt_Push_devIP_v6(const KIP_v6& ip_v6);

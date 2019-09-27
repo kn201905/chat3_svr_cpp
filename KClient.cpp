@@ -8,6 +8,7 @@
 
 #include "KClient.h"
 #include "KServer.h"
+#include "KSPRS_rld.h"
 
 ///===DEBUG===///
 extern  void  G_cout_xbytes(const uint8_t* psrc, const size_t bytes);
@@ -33,6 +34,8 @@ static constexpr KCnstString  sce_kcnststr_http_respns{
 
 static constexpr int  sce_len_http_respns = sce_kcnststr_http_respns.mc_len;
 static constexpr int  sce_idx_http_respns_accept_key = sce_kcnststr_http_respns.FindIdxOf('#');
+
+time_t  KClient::ms_time_atRead_asWS = 0;
 
 ////////////////////////////////////////////////////////////////
 // WebSocket の構築を開始するメソッド
@@ -192,6 +195,8 @@ static uint8_t  sa_buf_for_ErrLog[48];
 
 void  KClient::On_Async_Read_Hndlr_asWS(const boost::system::error_code& crerr, const size_t cbytes_read)
 {
+	ms_time_atRead_asWS = time(NULL);
+
 ///===DEBUG===///
 std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ ID: " << m_sckt_ID << ", bytes_read: " << cbytes_read << std::endl;
 
@@ -200,7 +205,7 @@ std::cout << "KClient::On_Async_Read_Hndlr_asWS() ▶ ID: " << m_sckt_ID << ", b
 ///===DEBUG===///
 cout << "On_Async_Read_Hndlr_asWS() is called with error..." << endl;
 
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_on_Async_Read_WebSckt, &m_sckt_ID, 8);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_on_Async_Read_WebSckt, &m_sckt_ID, 8, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -218,7 +223,7 @@ cout << "On_Async_Read_Hndlr_asWS():  packet size is too small... bytes: " << cb
 		*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 		*(uint64_t*)(sa_buf_for_ErrLog + 8) = cbytes_read;
 		*(uint64_t*)(sa_buf_for_ErrLog + 16) = 0;
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -232,7 +237,7 @@ cout << "On_Async_Read_Hndlr_asWS():  packet size is too small... bytes: " << cb
 cout << "On_Async_Read_Hndlr_asWS(): FIN flag is OFF..." << endl;
 
 		// ペイロードが分割されるようなことはないはず
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_not_FIN_Recieved, &m_sckt_ID, 8);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_not_FIN_Recieved, &m_sckt_ID, 8, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -250,14 +255,14 @@ cout << "On_Async_Read_Hndlr_asWS(): FIN flag is OFF..." << endl;
 ///===DEBUG===///
 cout << "On_Async_Read_Hndlr_asWS() received CLOSE...  m_sckt_ID: " << m_sckt_ID << endl;
 
-				g_glog.WriteID_with_UnixTime(N_LogID::EN_RCVD_CLOSE_opcode, &m_sckt_ID, 8);
+				g_glog.WriteID_wUT(N_LogID::EN_RCVD_CLOSE_opcode, &m_sckt_ID, 8, ms_time_atRead_asWS);
 				break;
 
 			case 0x9:  // PING
 ///===DEBUG===///
 cout << "On_Async_Read_Hndlr_asWS() received PING...  m_sckt_ID: " << m_sckt_ID << endl;
 
-				g_glog.WriteID_with_UnixTime(N_LogID::EN_RCVD_PING_opcode, &m_sckt_ID, 8);
+				g_glog.WriteID_wUT(N_LogID::EN_RCVD_PING_opcode, &m_sckt_ID, 8, ms_time_atRead_asWS);
 				break;
 
 			default:
@@ -266,7 +271,7 @@ cout << "On_Async_Read_Hndlr_asWS() received Unknown opcode...  m_sckt_ID: " << 
 
 				*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 				sa_buf_for_ErrLog[8] = c1st_16bit & 0xf;
-				g_glog.WriteID_with_UnixTime(N_LogID::EN_RCVD_Unhandle_opcode, sa_buf_for_ErrLog, 9);
+				g_glog.WriteID_wUT(N_LogID::EN_RCVD_Unhandle_opcode, sa_buf_for_ErrLog, 9, ms_time_atRead_asWS);
 		}
 
 		// 自分自身をリサイクルに回してしまう（接続破棄）
@@ -284,7 +289,7 @@ cout << "On_Async_Read_Hndlr_asWS(): (1) payload size is TOO BIG...  m_sckt_ID: 
 		*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 		*(uint64_t*)(sa_buf_for_ErrLog + 8) = *(uint64_t*)(ma_ui8_prvt_buf + 2);
 		// On_Async_Read_Hndlr_onRglr() が受け取るペイロードは、高々 1kbytes 程度まで
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_tooBig_Payload, sa_buf_for_ErrLog, 16);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_tooBig_Payload, sa_buf_for_ErrLog, 16, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -307,7 +312,7 @@ cout << "On_Async_Read_Hndlr_asWS(): payload size is NOT match cbytes_read.  m_s
 				*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 				*(uint64_t*)(sa_buf_for_ErrLog + 8) = cbytes_read;
 				*(uint64_t*)(sa_buf_for_ErrLog + 16) = bytes_payload;
-				g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24);
+				g_glog.WriteID_wUT(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24, ms_time_atRead_asWS);
 				// 自分自身をリサイクルに回してしまう（接続破棄）
 				m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 				return;
@@ -327,7 +332,7 @@ cout << "On_Async_Read_Hndlr_asWS(): payload size is NOT match cbytes_read.  m_s
 				*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 				*(uint64_t*)(sa_buf_for_ErrLog + 8) = cbytes_read;
 				*(uint64_t*)(sa_buf_for_ErrLog + 16) = bytes_payload;
-				g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24);
+				g_glog.WriteID_wUT(N_LogID::EN_ERR_invalid_len_WS_pckt, sa_buf_for_ErrLog, 24, ms_time_atRead_asWS);
 				// 自分自身をリサイクルに回してしまう（接続破棄）
 				m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 				return;
@@ -344,7 +349,7 @@ cout << "On_Async_Read_Hndlr_asWS(): (2) payload size is TOO BIG...  m_sckt_ID: 
 		*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 		*(uint64_t*)(sa_buf_for_ErrLog + 8) = bytes_payload;
 		// On_Async_Read_Hndlr_onRglr() が受け取るペイロードは、高々 1kbytes 程度まで
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_tooBig_Payload, sa_buf_for_ErrLog, 16);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_tooBig_Payload, sa_buf_for_ErrLog, 16, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -401,7 +406,7 @@ void  KClient::On_Async_Write_Hndlr_asWS(const boost::system::error_code& crerr,
 	{
 cout << "On_Async_Write_Hndlr_asWS() is called with error..." << endl;
 
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_on_Async_Read_WebSckt, &m_sckt_ID, 8);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_on_Async_Read_WebSckt, &m_sckt_ID, 8, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;
@@ -417,7 +422,7 @@ cout << "On_Async_Write_Hndlr_asWS() is called with error... / cbytes_wrtn is NO
 		*(uint64_t*)sa_buf_for_ErrLog = m_sckt_ID;
 		*(uint64_t*)(sa_buf_for_ErrLog + 8) = m_bytes_to_wrt;
 		*(uint64_t*)(sa_buf_for_ErrLog + 8) = cbytes_wrtn;
-		g_glog.WriteID_with_UnixTime(N_LogID::EN_ERR_Miss_WriteBytes_onWS, sa_buf_for_ErrLog, 24);
+		g_glog.WriteID_wUT(N_LogID::EN_ERR_Miss_WriteBytes_onWS, sa_buf_for_ErrLog, 24, ms_time_atRead_asWS);
 		// 自分自身をリサイクルに回してしまう（接続破棄）
 		m_pSvr->Recycle_Clnt(m_pThis_byListElmt);
 		return;		
@@ -428,5 +433,55 @@ cout << "On_Async_Write_Hndlr_asWS() is called with error... / cbytes_wrtn is NO
 	m_socket.async_read_some(mc_asio_prvt_buf_read,
 						boost::bind(&KClient::On_Async_Read_Hndlr_asWS, this,
 						asio::placeholders::error, asio::placeholders::bytes_transferred));
+}
+
+// -------------------------------------------------------------
+
+void  KClient::Clean()
+{
+	if (m_pKUInfo_Elmt)
+	{
+		// ユーザ登録していた人のクローズ記録は残す
+		g_glog.Wrt_uID_wUT(N_LogID::EN_Close_Usr, m_pKUInfo_Elmt->m_uID, ms_time_atRead_asWS);
+
+		// 念のため
+		m_pKUInfo_Elmt->m_bytes_KUInfo = 0;
+		m_pKUInfo_Elmt->m_uID = 0;
+
+		KUInfo::ms_List.MoveToEnd(m_pKUInfo_Elmt);
+		m_pKUInfo_Elmt = NULL;
+	}
+
+	// m_pKClnt_Chat も初期化する
+	m_pKClnt_Chat->Clean_KClntChat();
+
+	// SPRS の監視対象になっていた場合、Recycle されたことを通知する
+	if (m_precd_SPRS)
+	{
+		m_precd_SPRS->m_pKClient = NULL;
+		m_precd_SPRS = NULL;
+	}
+
+	mb_IsSuperUser = false;
+	m_stt_cur = EN_STATUS::EN_No_WS;
+}
+
+
+////////////////////////////////////////////////////////////////
+// KUInfo
+// 現在は、単純に super user は 1 - 999、通常の user は 1000 - としている
+
+static  uint32_t  s_super_usr_ID = 1;  // 現在は暫定的な仕様
+uint32_t  KUInfo::Crt_New_SuperUsrID()
+{
+	return  s_super_usr_ID++;
+}
+
+// -------------------------------------------------------------
+
+static  uint32_t  s_usr_ID = 1000;  // 現在は暫定的な仕様
+uint32_t  KUInfo::Crt_New_UsrID()
+{
+	return  s_usr_ID++;
 }
 

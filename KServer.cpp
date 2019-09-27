@@ -88,22 +88,9 @@ std::cout << ", async_accept FAILED: ▶▶▶" << crerr.message() << std::endl;
 		this->Recycle_Clnt(c_pKClnt_Elmt_onAccpted);
 		return;  // エラーの場合, pKClnt_Elmt_onAccpted の接続は破棄され、リサイクルに回される
 	}
-
-	// エラーなく接続を受け付けた場合の処理（DoS攻撃を想定して、async_accept() の段階ではログは残さない）
-	// ----------------------------------
-	// ファイルディスクリプタが設定された後でないと、バッファサイズが指定できなようなので、
-	// この段階でバッファサイズを設定し直す
-	{
-		boost::asio::socket_base::receive_buffer_size  opt_rcv_set(KClient::BYTES_Sckt_Buf_RECEIVE);
-		c_pKClnt_Elmt_onAccpted->m_socket.set_option(opt_rcv_set);
-
-		boost::asio::socket_base::send_buffer_size  opt_send_set(KClient::BYTES_Sckt_Buf_SEND);
-		c_pKClnt_Elmt_onAccpted->m_socket.set_option(opt_send_set);
-	}
-	// ----------------------------------
-
 ///===DBG===///
 std::cout << ", accept succeeded." << std::endl;
+
 
 	// -------------------------------------
 	// まず、多重接続のチェックを行う
@@ -128,23 +115,48 @@ std::cout << "remote_endpoint() FAILED: ▶▶▶" << ec.message() << std::endl;
 		return;
 	}
 
+	if (precd_SPRS->m_times_cnct > N_SPRS::EN_Limit_Cnct)
+	{
+		// この場合は DoS攻撃も考えられるため、速やかに c_pKClnt_Elmt_onAccpted を解放させる
+		if (precd_SPRS->m_pKClient)
+		{ this->Recycle_Clnt(precd_SPRS->m_pKClient->m_pThis_byListElmt); }
+
+		this->Recycle_Clnt(c_pKClnt_Elmt_onAccpted);
+		return;
+	}
+	// ----------------------------------
+	// 以降は precd_SPRS->m_times_cnct <= N_SPRS::EN_Limit_Cnct であり、DoS攻撃の可能性の低い接続
+
+	// ファイルディスクリプタが設定された後でないと、バッファサイズが指定できなようなので、
+	// この段階でバッファサイズを設定し直す
+	{
+		boost::asio::socket_base::receive_buffer_size  opt_rcv_set(KClient::BYTES_Sckt_Buf_RECEIVE);
+		c_pKClnt_Elmt_onAccpted->m_socket.set_option(opt_rcv_set);
+
+		boost::asio::socket_base::send_buffer_size  opt_send_set(KClient::BYTES_Sckt_Buf_SEND);
+		c_pKClnt_Elmt_onAccpted->m_socket.set_option(opt_send_set);
+	}
+
 	// 以前に接続状態にあった KClient があれば、以前のものはリサイクルに回し、pKClnt_onAccpted に切り替える
+	// さらに、以前に uname の登録などをしていれば、その情報を引き継ぐ
 	if (precd_SPRS->m_pKClient)
 	{
-		// Recycle_Clnt() 内で、precd_SPRS->m_pKClient = NULL に設定される
-		this->Recycle_Clnt(precd_SPRS->m_pKClient->m_pThis_byListElmt);
+		KClient* const  c_pPre_KClient = precd_SPRS->m_pKClient;
+		if (c_pPre_KClient->m_pKUInfo_Elmt)
+		{
+			// SPRS監視期間中、既に uname を持っていたら、それを引き継ぐ
+			c_pKClnt_Elmt_onAccpted->m_pKUInfo_Elmt = c_pPre_KClient->m_pKUInfo_Elmt;
+			c_pPre_KClient->m_pKUInfo_Elmt = NULL;
+		}
+
+		// Recycle_Clnt() 内で、precd_SPRS->m_pKClient = NULL に設定されるため、後で設定し直す必要がある
+		this->Recycle_Clnt(c_pPre_KClient->m_pThis_byListElmt);
 	}
 
 	// pKClnt_onAccpted が監視対象になったことを設定
 	precd_SPRS->m_pKClient = c_pKClnt_Elmt_onAccpted;
 	c_pKClnt_Elmt_onAccpted->m_precd_SPRS = precd_SPRS;
 
-	if (precd_SPRS->m_times_cnct > N_SPRS::EN_Limit_Cnct)
-	{
-		// 接続回数が制限を超えている場合は、async_read() は発行せず、即 KClient を解放させる
-		this->Recycle_Clnt(c_pKClnt_Elmt_onAccpted);
-		return;
-	}
 	// ここまでで、多重接続のチェックは終了
 	// -------------------------------------
 
@@ -164,6 +176,11 @@ std::cout << "remote_endpoint() FAILED: ▶▶▶" << ec.message() << std::endl;
 		}
 	}
 
+	// 今のところ、SuperUser 判定は、DevIP のみ
+	// 今後は、ログイン時のパスワードなどの設定で, SuperUser フラグを ON にする
+	if (precd_SPRS->mb_IsDev)
+	{ c_pKClnt_Elmt_onAccpted->mb_IsSuperUser = true; }
+
 	c_pKClnt_Elmt_onAccpted->Crt_WebScktConnection();
 }
 
@@ -171,6 +188,7 @@ std::cout << "remote_endpoint() FAILED: ▶▶▶" << ec.message() << std::endl;
 
 void  KServer::Recycle_Clnt(KSmplListElmt<KClient>* const pkclnt_elmt_abort)
 {
+	// m_sckt_ID の割り振りがあるため、ソケットの処理は KServer で行うことにする
 	if (pkclnt_elmt_abort->m_socket.is_open())
 	{
 		boost::system::error_code  ec;
@@ -188,18 +206,11 @@ void  KServer::Recycle_Clnt(KSmplListElmt<KClient>* const pkclnt_elmt_abort)
 		m_next_sckt_ID++;
 	}
 
-	// 万一 write buffer を使っていた場合、ここで閉じる
-	pkclnt_elmt_abort->m_pKClnt_Chat->Recycle();
+	// KClient 内の情報を、初期設定に戻す
+	pkclnt_elmt_abort->Clean();
 
-	// SPRS の監視対象になっていた場合、Recycle されたことを通知する
-	if (pkclnt_elmt_abort->m_precd_SPRS)
-	{
-		pkclnt_elmt_abort->m_precd_SPRS->m_pKClient = NULL;
-		pkclnt_elmt_abort->m_precd_SPRS = NULL;
-	}
-
+	// pkclnt_elmt_abort を破棄
 	m_KClntList.MoveToEnd(pkclnt_elmt_abort);
-	pkclnt_elmt_abort->m_stt_cur = KClient::EN_STATUS::EN_No_WS;
 
 	// -------------------------------------
 	// 空きの Client がなくて、async_accept() が発行されていなかった場合の処理

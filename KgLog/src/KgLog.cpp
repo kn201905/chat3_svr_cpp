@@ -459,7 +459,41 @@ KgLog::EN_bErr  KgLog::WriteID_with_UnixTime(const uint8_t logID, const void* co
 
 	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(bytes_wrt);
 	sem_post(&m_sem_TA);
-	
+	return  cret_val;
+}
+
+// ------------------------------------------------------------------
+// ディスクに記録するのは、14（11(UinixTime) +3(logID,len)）+ len bytes となる
+
+KgLog::EN_bErr  KgLog::WriteID_wUT(
+		const uint8_t logID, const void* const cp_data, const uint16_t len, const time_t unix_time)
+{
+	if (mb_IsUnderErr == EN_bErr::Err) { return  EN_bErr::Err; }
+
+	// UNIX タイムを書き込む
+	char* const  cpnext = m_TA_pos_next.Get_Ptr();
+	*cpnext = N_LogID::EN_UNIX_TIME;  // logID
+	*(uint16_t*)(cpnext + 1) = 8;  // len
+	*(time_t*)(cpnext + 3) = unix_time;
+
+	// データを書き込む
+	size_t  bytes_wrt;
+	*(uint8_t*)(cpnext + 11) = logID;
+	if (len <= mc_max_bytes_wrt) // オーバーフローなし
+	{
+		*(uint16_t*)(cpnext + 12) = len;
+		memcpy(cpnext + 14, cp_data, len);
+		bytes_wrt = 14 + len;
+	}
+	else  // オーバーフローあり
+	{
+		*(uint16_t*)(cpnext + 12) = mc_max_bytes_wrt | N_LogID::EN_FLG_DataSz_PADover;
+		memcpy(cpnext + 14, cp_data, mc_max_bytes_wrt);
+		bytes_wrt = 14 + mc_max_bytes_wrt;
+	}
+
+	const EN_bErr  cret_val = this->Adv_TA_pos_next_onLocked(bytes_wrt);
+	sem_post(&m_sem_TA);
 	return  cret_val;
 }
 
